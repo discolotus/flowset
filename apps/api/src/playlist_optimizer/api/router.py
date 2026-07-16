@@ -9,8 +9,10 @@ from playlist_optimizer.models import (
     DemoPlaylist,
     OptimizationRequest,
     OptimizationResponse,
+    RecipePreviewRequest,
+    RecipePreviewResponse,
 )
-from playlist_optimizer.optimization import optimize_tracks, summarize_tracks
+from playlist_optimizer.optimization import optimize_tracks, preview_recipe, summarize_tracks
 
 router = APIRouter(prefix="/api/v1")
 
@@ -46,6 +48,45 @@ def demo_playlist() -> DemoPlaylist:
     )
 
 
+@router.get("/demo/playlists", response_model=list[DemoPlaylist])
+def demo_playlists() -> list[DemoPlaylist]:
+    fixtures = (
+        (
+            "demo-sunset-warmup",
+            "Sunset Warmup",
+            "A low-to-medium energy source playlist.",
+            DEMO_TRACKS[:6],
+        ),
+        (
+            "demo-neon-peak",
+            "Neon Peak",
+            "A higher-energy source with two tracks shared with Sunset Warmup.",
+            DEMO_TRACKS[4:10],
+        ),
+        (
+            "demo-afterhours",
+            "Afterhours",
+            "A non-overlapping late-night source playlist.",
+            DEMO_TRACKS[10:],
+        ),
+    )
+    return [
+        DemoPlaylist(
+            id=playlist_id,
+            name=name,
+            description=description,
+            tracks=tracks,
+            summary=summarize_tracks(tracks),
+        )
+        for playlist_id, name, description, tracks in fixtures
+    ]
+
+
 @router.post("/optimize", response_model=OptimizationResponse)
 def optimize(request: OptimizationRequest) -> OptimizationResponse:
     return optimize_tracks(request)
+
+
+@router.post("/recipes/preview", response_model=RecipePreviewResponse)
+def recipe_preview(request: RecipePreviewRequest) -> RecipePreviewResponse:
+    return preview_recipe(request)

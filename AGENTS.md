@@ -7,6 +7,12 @@
 - Keep fixture, Spotify metadata, and musical-feature provider boundaries visible in code and UI.
 - Do not claim Spotify Audio Features are available unless the configured app's access is verified.
 - Optimization preview and Spotify export are separate operations.
+- Organization follows `sources → split → subgroup → scoped sort`; do not collapse these into
+  one opaque strategy setting.
+- Splitting creates basis playlists. Subgrouping creates contiguous sections inside a basis
+  playlist and must conserve its track membership.
+- Sorting applies inside each subgroup when groups exist, otherwise inside each basis playlist.
+- Every proposed output keeps its complete track list inspectable before export.
 
 ## Structure
 

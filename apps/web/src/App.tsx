@@ -1,141 +1,262 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { EnergyTimeline } from "./components/EnergyTimeline";
-import { TrackTable } from "./components/TrackTable";
-import { getDemoPlaylist, optimizePlaylist } from "./lib/api";
-import { runtime } from "./lib/format";
+import { DistributionChart, DistributionLegend } from "./components/DistributionChart";
+import { OutputPlaylistCard } from "./components/OutputPlaylistCard";
+import { SourcePlaylistPicker } from "./components/SourcePlaylistPicker";
+import { getDemoPlaylists, previewRecipe } from "./lib/api";
+import {
+  buildLocalDistribution,
+  NUMERIC_PARAMETERS,
+  parameterLabel,
+  SORT_PARAMETERS,
+} from "./lib/parameters";
 import type {
-  DemoPlaylist,
-  GeneratedPlaylist,
-  PlaylistSummary,
-  Strategy,
+  InputPlaylist,
+  NumericParameter,
+  RecipePreviewResponse,
+  SortDirection,
+  SortParameter,
   Track,
 } from "./lib/types";
 
-const STRATEGIES: Array<{ value: Strategy; label: string; detail: string }> = [
-  { value: "energy_bpm_key", label: "Balanced flow", detail: "Energy → BPM → key" },
-  { value: "energy_progression", label: "Build energy", detail: "Calm to peak" },
-  { value: "energy_pyramid", label: "Full journey", detail: "Rise, peak, resolve" },
-  { value: "bpm_first", label: "Tempo rooms", detail: "10 BPM windows" },
-  { value: "key_first", label: "Harmonic", detail: "Camelot wheel first" },
-  { value: "energy_buckets", label: "Create five moods", detail: "Separate playlists" },
-];
+const LEVEL_OPTIONS = [2, 3, 4, 5, 6];
 
-function summarize(tracks: Track[]): PlaylistSummary {
-  const features = tracks.flatMap((track) => (track.audio_features ? [track.audio_features] : []));
-  const mean = (values: number[]) =>
-    values.length ? values.reduce((total, value) => total + value, 0) / values.length : null;
-  const energies = features.map((item) => item.energy);
-  return {
-    song_count: tracks.length,
-    duration_ms: tracks.reduce((total, track) => total + track.duration_ms, 0),
-    average_energy: mean(energies),
-    average_bpm: mean(features.map((item) => item.tempo)),
-    average_danceability: mean(features.map((item) => item.danceability)),
-    energy_range: energies.length ? [Math.min(...energies), Math.max(...energies)] : null,
-  };
-}
-
-function Stat({ label, value, detail }: { label: string; value: string; detail?: string }) {
-  return (
-    <div className="min-w-0 border-r border-line px-5 last:border-r-0 first:pl-0">
-      <p className="text-[10px] uppercase tracking-[0.16em] text-mist/50">{label}</p>
-      <p className="mt-1 font-display text-xl font-semibold tracking-tight text-white/90">{value}</p>
-      {detail && <p className="mt-0.5 truncate text-[11px] text-mist/50">{detail}</p>}
-    </div>
+function deduplicateTracks(playlists: InputPlaylist[]): Track[] {
+  const seen = new Set<string>();
+  return playlists.flatMap((playlist) =>
+    playlist.tracks.filter((track) => {
+      if (seen.has(track.id)) return false;
+      seen.add(track.id);
+      return true;
+    }),
   );
 }
 
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
+function Toggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  label: string;
+}) {
   return (
-    <button type="button" onClick={onChange} className="flex w-full items-center justify-between gap-3 py-1.5 text-left">
-      <span className="text-sm text-white/70">{label}</span>
-      <span className={`relative h-5 w-9 rounded-full transition ${checked ? "bg-acid" : "bg-white/10"}`}>
-        <span className={`absolute top-0.5 h-4 w-4 rounded-full transition ${checked ? "left-[18px] bg-ink" : "left-0.5 bg-mist"}`} />
-      </span>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={onChange}
+      className={`toggle ${checked ? "enabled" : ""}`}
+    >
+      <span />
     </button>
   );
 }
 
+function RecipeStep({
+  number,
+  title,
+  description,
+  enabled,
+  onToggle,
+  children,
+}: {
+  number: string;
+  title: string;
+  description: string;
+  enabled: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className={`recipe-step ${enabled ? "enabled" : ""}`}>
+      <header className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 gap-3">
+          <span className="step-number">{number}</span>
+          <div>
+            <h3 className="font-display text-base font-semibold text-white/90">{title}</h3>
+            <p className="mt-1 text-xs leading-5 text-mist/55">{description}</p>
+          </div>
+        </div>
+        <Toggle checked={enabled} onChange={onToggle} label={`${enabled ? "Disable" : "Enable"} ${title}`} />
+      </header>
+      {enabled && <div className="mt-4 grid grid-cols-2 gap-3 pl-10">{children}</div>}
+    </section>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  label: string;
+  value: string | number;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="control-field">
+      <span>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {children}
+      </select>
+    </label>
+  );
+}
+
+function SourceSummary({
+  selectedCount,
+  inputTrackCount,
+  uniqueTrackCount,
+}: {
+  selectedCount: number;
+  inputTrackCount: number;
+  uniqueTrackCount: number;
+}) {
+  const duplicates = inputTrackCount - uniqueTrackCount;
+  return (
+    <div className="source-summary" aria-label="Combined source summary">
+      <span><strong>{selectedCount}</strong> sources</span>
+      <span><strong>{inputTrackCount}</strong> input tracks</span>
+      <span><strong>{uniqueTrackCount}</strong> unique</span>
+      <span className={duplicates ? "text-acid" : ""}><strong>{duplicates}</strong> duplicates removed</span>
+    </div>
+  );
+}
+
 export default function App() {
-  const [demo, setDemo] = useState<DemoPlaylist | null>(null);
-  const [tracks, setTracks] = useState<Track[]>([]);
-  const [outputs, setOutputs] = useState<GeneratedPlaylist[]>([]);
-  const [activeOutput, setActiveOutput] = useState(0);
-  const [strategy, setStrategy] = useState<Strategy>("energy_bpm_key");
-  const [maximumBpmJump, setMaximumBpmJump] = useState(8);
-  const [maximumEnergyJump, setMaximumEnergyJump] = useState(0.15);
-  const [artistSpacing, setArtistSpacing] = useState(2);
-  const [excludeExplicit, setExcludeExplicit] = useState(false);
-  const [pinned, setPinned] = useState<Set<string>>(new Set());
-  const [locked, setLocked] = useState<Set<string>>(new Set());
-  const [warnings, setWarnings] = useState<string[]>([]);
+  const [playlists, setPlaylists] = useState<InputPlaylist[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [recipeName, setRecipeName] = useState("Night Drive Levels");
+  const [distributionParameter, setDistributionParameter] =
+    useState<NumericParameter>("energy");
+  const [distributionBinCount, setDistributionBinCount] = useState(8);
+  const [splitEnabled, setSplitEnabled] = useState(true);
+  const [splitParameter, setSplitParameter] = useState<NumericParameter>("energy");
+  const [splitBinCount, setSplitBinCount] = useState(3);
+  const [subgroupEnabled, setSubgroupEnabled] = useState(true);
+  const [subgroupParameter, setSubgroupParameter] =
+    useState<NumericParameter>("danceability");
+  const [subgroupBinCount, setSubgroupBinCount] = useState(2);
+  const [sortEnabled, setSortEnabled] = useState(true);
+  const [sortParameter, setSortParameter] = useState<SortParameter>("tempo");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("ascending");
+  const [preview, setPreview] = useState<RecipePreviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [optimizing, setOptimizing] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getDemoPlaylist()
-      .then((playlist) => {
-        setDemo(playlist);
-        setTracks(playlist.tracks);
+    getDemoPlaylists()
+      .then((demoPlaylists) => {
+        setPlaylists(demoPlaylists);
+        setSelectedIds(new Set(demoPlaylists.map((playlist) => playlist.id)));
       })
       .catch((reason: unknown) =>
-        setError(reason instanceof Error ? reason.message : "Unable to load the demo playlist."),
+        setError(reason instanceof Error ? reason.message : "Could not load source playlists."),
       )
       .finally(() => setLoading(false));
   }, []);
 
-  const summary = useMemo(() => summarize(tracks), [tracks]);
-  const selectedStrategy = STRATEGIES.find((item) => item.value === strategy)!;
+  const selectedPlaylists = useMemo(
+    () => playlists.filter((playlist) => selectedIds.has(playlist.id)),
+    [playlists, selectedIds],
+  );
+  const combinedTracks = useMemo(
+    () => selectedPlaylists.flatMap((playlist) => playlist.tracks),
+    [selectedPlaylists],
+  );
+  const uniqueTracks = useMemo(() => deduplicateTracks(selectedPlaylists), [selectedPlaylists]);
+  const localDistribution = useMemo(
+    () => buildLocalDistribution(uniqueTracks, distributionParameter, distributionBinCount),
+    [uniqueTracks, distributionParameter, distributionBinCount],
+  );
+  const distribution =
+    preview?.distribution.parameter === distributionParameter &&
+    preview.distribution.requested_bin_count === distributionBinCount
+      ? preview.distribution
+      : localDistribution;
+  const sortDirectionLabels = sortParameter === "key"
+    ? ["Camelot order", "Reverse Camelot"]
+    : ["name", "artist", "album"].includes(sortParameter)
+      ? ["A to Z", "Z to A"]
+      : ["Low to high", "High to low"];
 
-  const runOptimization = async () => {
-    if (!demo || tracks.length === 0) return;
-    setOptimizing(true);
-    setError(null);
-    try {
-      const response = await optimizePlaylist({
-        name: demo.name,
-        strategy,
-        tracks,
-        maximumBpmJump,
-        maximumEnergyJump,
-        minimumArtistSpacing: artistSpacing,
-        excludeExplicit,
-      });
-      setOutputs(response.generated_playlists);
-      setActiveOutput(0);
-      setTracks(response.generated_playlists[0]?.tracks ?? []);
-      setWarnings(response.warnings);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Optimization failed.");
-    } finally {
-      setOptimizing(false);
+  useEffect(() => {
+    if (selectedPlaylists.length === 0) {
+      setPreview(null);
+      setPreviewing(false);
+      return;
     }
-  };
+    let stale = false;
+    const timer = window.setTimeout(() => {
+      setPreviewing(true);
+      setError(null);
+      previewRecipe({
+        name: recipeName.trim() || "Organized playlist",
+        inputPlaylists: selectedPlaylists,
+        distributionParameter,
+        distributionBinCount,
+        split: splitEnabled
+          ? { parameter: splitParameter, binCount: splitBinCount }
+          : null,
+        subgroup: subgroupEnabled
+          ? { parameter: subgroupParameter, binCount: subgroupBinCount }
+          : null,
+        sort: sortEnabled
+          ? { parameter: sortParameter, direction: sortDirection }
+          : null,
+      })
+        .then((result) => {
+          if (!stale) setPreview(result);
+        })
+        .catch((reason: unknown) => {
+          if (!stale) {
+            setError(reason instanceof Error ? reason.message : "Could not build this preview.");
+          }
+        })
+        .finally(() => {
+          if (!stale) setPreviewing(false);
+        });
+    }, 220);
+    return () => {
+      stale = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    distributionBinCount,
+    distributionParameter,
+    recipeName,
+    selectedPlaylists,
+    sortDirection,
+    sortEnabled,
+    sortParameter,
+    splitBinCount,
+    splitEnabled,
+    splitParameter,
+    subgroupBinCount,
+    subgroupEnabled,
+    subgroupParameter,
+  ]);
 
-  const chooseOutput = (index: number) => {
-    setActiveOutput(index);
-    setTracks(outputs[index].tracks);
-  };
+  const recipeSentence = [
+    splitEnabled
+      ? `Split into ${splitBinCount} ${parameterLabel(splitParameter).toLowerCase()} levels`
+      : "Keep one basis playlist",
+    subgroupEnabled
+      ? `group each into ${subgroupBinCount} ${parameterLabel(subgroupParameter).toLowerCase()} sections`
+      : null,
+    sortEnabled
+      ? `sort ${subgroupEnabled ? "inside each section" : "the playlist"} by ${parameterLabel(sortParameter).toLowerCase()} ${sortDirectionLabels[sortDirection === "ascending" ? 0 : 1].toLowerCase()}`
+      : null,
+  ].filter(Boolean).join(" → ");
 
-  const moveTrack = (sourceId: string, targetId: string) => {
-    if (locked.has(sourceId) || locked.has(targetId)) return;
-    setTracks((current) => {
-      const sourceIndex = current.findIndex((track) => track.id === sourceId);
-      const targetIndex = current.findIndex((track) => track.id === targetId);
-      const copy = [...current];
-      const [moved] = copy.splice(sourceIndex, 1);
-      copy.splice(targetIndex, 0, moved);
-      return copy;
-    });
-  };
-
-  const toggleSet = (
-    setter: React.Dispatch<React.SetStateAction<Set<string>>>,
-    id: string,
-  ) => {
-    setter((current) => {
+  const toggleSource = (id: string) => {
+    setSelectedIds((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -143,25 +264,23 @@ export default function App() {
     });
   };
 
-  const reset = () => {
-    if (!demo) return;
-    setTracks(demo.tracks);
-    setOutputs([]);
-    setWarnings([]);
-    setPinned(new Set());
-    setLocked(new Set());
-  };
-
   if (loading) {
-    return <main className="grid min-h-screen place-items-center bg-ink text-mist">Loading the crate…</main>;
+    return (
+      <main className="grid min-h-screen place-items-center bg-ink px-6 text-center text-mist">
+        <div className="w-full max-w-sm">
+          <div className="mx-auto h-8 w-8 animate-pulse rounded-md bg-acid/30" />
+          <p className="mt-4 text-sm">Loading the source crate…</p>
+        </div>
+      </main>
+    );
   }
 
-  if (error && !demo) {
+  if (error && playlists.length === 0) {
     return (
       <main className="grid min-h-screen place-items-center bg-ink p-8 text-center text-white">
         <div>
-          <p className="text-acid">The API is not running.</p>
-          <p className="mt-2 text-sm text-mist">Start both services with `npm run dev`.</p>
+          <p className="text-acid">The local API is not available.</p>
+          <p className="mt-2 text-sm text-mist">Run `npm run dev`, then reload this page.</p>
         </div>
       </main>
     );
@@ -169,132 +288,194 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-ink text-white selection:bg-acid selection:text-ink">
-      <header className="sticky top-0 z-20 border-b border-line/80 bg-ink/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-4 lg:px-8">
+      <a href="#workspace" className="skip-link">Skip to workspace</a>
+      <header className="sticky top-0 z-30 border-b border-line/80 bg-ink/90 backdrop-blur-xl">
+        <nav className="mx-auto flex max-w-[1480px] items-center justify-between px-5 py-4 lg:px-8" aria-label="Primary navigation">
           <div className="flex items-center gap-3">
-            <span className="grid h-8 w-8 place-items-center rounded-full border border-acid/40 bg-acid/10 font-display text-sm font-bold text-acid">S</span>
+            <span className="brand-mark" aria-hidden="true">S</span>
             <div>
               <p className="font-display text-sm font-semibold tracking-tight">Sequence</p>
-              <p className="text-[9px] uppercase tracking-[0.2em] text-mist/45">Playlist optimizer</p>
+              <p className="text-[9px] uppercase tracking-[0.2em] text-mist/45">Playlist laboratory</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="hidden rounded-full border border-amber-300/20 bg-amber-300/[0.06] px-3 py-1.5 text-[10px] uppercase tracking-[0.14em] text-amber-200/80 sm:block">Fixture data</span>
-            <button className="rounded-full border border-white/10 px-4 py-2 text-xs font-medium text-white/50" disabled>
-              Connect Spotify — next milestone
-            </button>
+          <div className="flex items-center gap-4">
+            <span className="hidden text-[10px] uppercase tracking-[0.16em] text-acid/65 sm:block">Fixture workspace</span>
+            <button className="connect-button" disabled>Spotify connection pending</button>
           </div>
-        </div>
+        </nav>
       </header>
 
-      <main className="mx-auto grid max-w-[1500px] gap-6 px-5 py-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:px-8 lg:py-8">
-        <aside className="h-fit rounded-2xl border border-line bg-panel p-5 shadow-glow lg:sticky lg:top-24">
-          <p className="eyebrow">Optimization recipe</p>
-          <h2 className="mt-2 font-display text-xl font-semibold">Shape the arc</h2>
-          <p className="mt-1 text-xs leading-5 text-mist/60">Choose how the set should move, then tune its guardrails.</p>
+      <main id="workspace" className="mx-auto max-w-[1480px] px-5 pb-16 pt-9 lg:px-8 lg:pt-12">
+        <section className="max-w-4xl">
+          <p className="eyebrow">Organization recipe 01</p>
+          <h1 className="mt-3 max-w-3xl text-balance font-display text-4xl font-semibold leading-[1.02] tracking-[-0.045em] text-white sm:text-5xl lg:text-6xl">
+            Turn a crate into a set of usable playlists.
+          </h1>
+          <p className="mt-5 max-w-2xl text-pretty text-sm leading-6 text-mist/65 sm:text-base sm:leading-7">
+            Combine one or more sources, inspect the shape of the music, split it into basis playlists,
+            then group and sort tracks without crossing the boundaries you created.
+          </p>
+        </section>
 
-          <label className="mt-6 block text-[10px] uppercase tracking-[0.14em] text-mist/50" htmlFor="strategy">Strategy</label>
-          <select
-            id="strategy"
-            className="mt-2 w-full rounded-xl border border-line bg-ink/60 px-3 py-3 text-sm text-white outline-none focus:border-acid/50"
-            value={strategy}
-            onChange={(event) => setStrategy(event.target.value as Strategy)}
-          >
-            {STRATEGIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
-          <p className="mt-2 text-xs text-acid/70">{selectedStrategy.detail}</p>
-
-          <div className="mt-6 space-y-5 border-t border-line pt-5">
-            <label className="block">
-              <span className="flex justify-between text-xs text-mist"><span>Max BPM jump</span><span className="font-mono text-white/80">{maximumBpmJump}</span></span>
-              <input className="range" type="range" min="2" max="30" value={maximumBpmJump} onChange={(event) => setMaximumBpmJump(Number(event.target.value))} />
-            </label>
-            <label className="block">
-              <span className="flex justify-between text-xs text-mist"><span>Max energy jump</span><span className="font-mono text-white/80">{maximumEnergyJump.toFixed(2)}</span></span>
-              <input className="range" type="range" min="0.05" max="0.5" step="0.05" value={maximumEnergyJump} onChange={(event) => setMaximumEnergyJump(Number(event.target.value))} />
-            </label>
-            <label className="block">
-              <span className="flex justify-between text-xs text-mist"><span>Artist spacing</span><span className="font-mono text-white/80">{artistSpacing} tracks</span></span>
-              <input className="range" type="range" min="0" max="10" value={artistSpacing} onChange={(event) => setArtistSpacing(Number(event.target.value))} />
-            </label>
-            <Toggle checked={excludeExplicit} onChange={() => setExcludeExplicit((value) => !value)} label="Exclude explicit tracks" />
-          </div>
-
-          <button className="mt-6 w-full rounded-xl bg-acid px-4 py-3 text-sm font-semibold text-ink transition hover:bg-[#c8ff81] disabled:opacity-50" onClick={runOptimization} disabled={optimizing || tracks.length === 0}>
-            {optimizing ? "Finding the flow…" : "Generate preview"}
-          </button>
-          <button className="mt-2 w-full px-4 py-2 text-xs text-mist/55 transition hover:text-white" onClick={reset}>Reset source order</button>
-        </aside>
-
-        <section className="min-w-0">
-          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+        <section className="mt-10 border-y border-line py-6" aria-labelledby="sources-heading">
+          <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
             <div>
-              <p className="eyebrow">Working playlist</p>
-              <h1 className="mt-2 font-display text-3xl font-semibold tracking-[-0.035em] md:text-4xl">{outputs[activeOutput]?.name ?? demo?.name}</h1>
-              <p className="mt-2 max-w-2xl text-sm text-mist/60">{demo?.description} Drag any unlocked row to refine the sequence.</p>
+              <p className="eyebrow">Source pool</p>
+              <h2 id="sources-heading" className="mt-1 font-display text-xl font-semibold">Choose one or several playlists</h2>
             </div>
-            <div className="flex gap-2">
-              <button className="secondary-button" onClick={reset}>Discard changes</button>
-              <button className="secondary-button cursor-not-allowed opacity-45" disabled>Save to Spotify</button>
-            </div>
-          </div>
-
-          {outputs.length > 1 && (
-            <div className="mt-5 flex flex-wrap gap-2">
-              {outputs.map((output, index) => (
-                <button key={output.name} onClick={() => chooseOutput(index)} className={`rounded-full border px-3 py-1.5 text-xs transition ${index === activeOutput ? "border-acid/50 bg-acid/10 text-acid" : "border-line text-mist hover:text-white"}`}>{output.name.split("—").at(-1)}</button>
-              ))}
-            </div>
-          )}
-
-          {(warnings.length > 0 || error) && (
-            <div className="mt-5 rounded-xl border border-amber-300/20 bg-amber-300/[0.05] px-4 py-3 text-xs leading-5 text-amber-100/75">
-              {error ?? warnings.join(" ")}
-            </div>
-          )}
-
-          <div className="mt-6 grid grid-cols-2 gap-y-5 rounded-2xl border border-line bg-panel px-5 py-5 shadow-glow sm:grid-cols-4">
-            <Stat label="Tracks" value={String(summary.song_count)} detail={`${pinned.size} pinned · ${locked.size} locked`} />
-            <Stat label="Runtime" value={runtime(summary.duration_ms)} detail="Estimated set length" />
-            <Stat label="Avg. energy" value={summary.average_energy?.toFixed(2) ?? "—"} detail={summary.energy_range ? `${summary.energy_range[0].toFixed(2)}–${summary.energy_range[1].toFixed(2)} range` : undefined} />
-            <Stat label="Avg. tempo" value={summary.average_bpm ? `${summary.average_bpm.toFixed(0)} BPM` : "—"} detail={`${summary.average_danceability?.toFixed(2) ?? "—"} danceability`} />
-          </div>
-
-          <div className="mt-6 rounded-2xl border border-line bg-panel p-5 shadow-glow">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="eyebrow">Energy timeline</p>
-                <h2 className="mt-1 font-display text-lg font-semibold">The shape of the set</h2>
-              </div>
-              <span className="rounded-full border border-line px-2.5 py-1 font-mono text-[10px] text-mist/55">0.0 — 1.0</span>
-            </div>
-            <div className="mt-3"><EnergyTimeline tracks={tracks} /></div>
-          </div>
-
-          <div className="mt-6 overflow-hidden rounded-2xl border border-line bg-panel shadow-glow">
-            <div className="flex items-center justify-between border-b border-line px-5 py-4">
-              <div>
-                <p className="eyebrow">Sequence preview</p>
-                <h2 className="mt-1 font-display text-lg font-semibold">Transition by transition</h2>
-              </div>
-              <p className="hidden text-xs text-mist/45 sm:block">Drag to reorder · Pin ◆ · Lock ○</p>
-            </div>
-            <TrackTable
-              tracks={tracks}
-              pinned={pinned}
-              locked={locked}
-              onMove={moveTrack}
-              onRemove={(id) => setTracks((current) => current.filter((track) => track.id !== id))}
-              onTogglePin={(id) => toggleSet(setPinned, id)}
-              onToggleLock={(id) => toggleSet(setLocked, id)}
+            <SourceSummary
+              selectedCount={selectedPlaylists.length}
+              inputTrackCount={combinedTracks.length}
+              uniqueTrackCount={uniqueTracks.length}
             />
           </div>
+          <SourcePlaylistPicker playlists={playlists} selectedIds={selectedIds} onToggle={toggleSource} />
         </section>
+
+        {selectedPlaylists.length === 0 ? (
+          <section className="empty-state">
+            <p className="eyebrow">Nothing selected</p>
+            <h2 className="mt-2 font-display text-2xl font-semibold">Choose at least one source playlist.</h2>
+            <p className="mt-3 text-sm text-mist/60">The distribution and recipe preview will appear here.</p>
+          </section>
+        ) : (
+          <div className="mt-8 grid items-start gap-7 lg:grid-cols-[360px_minmax(0,1fr)]">
+            <aside className="recipe-builder lg:sticky lg:top-24" aria-labelledby="recipe-heading">
+              <div className="border-b border-line px-5 pb-5 pt-6">
+                <p className="eyebrow">Recipe builder</p>
+                <h2 id="recipe-heading" className="mt-1 font-display text-xl font-semibold">Order of operations</h2>
+                <label className="control-field mt-5">
+                  <span>Output name</span>
+                  <input value={recipeName} onChange={(event) => setRecipeName(event.target.value)} maxLength={100} />
+                </label>
+              </div>
+
+              <RecipeStep
+                number="1"
+                title="Split into playlists"
+                description="Create separate basis playlists from distribution levels."
+                enabled={splitEnabled}
+                onToggle={() => setSplitEnabled((value) => !value)}
+              >
+                <SelectField label="Parameter" value={splitParameter} onChange={(value) => setSplitParameter(value as NumericParameter)}>
+                  {NUMERIC_PARAMETERS.map((parameter) => <option key={parameter.value} value={parameter.value}>{parameter.label}</option>)}
+                </SelectField>
+                <SelectField label="Levels" value={splitBinCount} onChange={(value) => setSplitBinCount(Number(value))}>
+                  {LEVEL_OPTIONS.map((count) => <option key={count} value={count}>{count} levels</option>)}
+                </SelectField>
+              </RecipeStep>
+
+              <RecipeStep
+                number="2"
+                title="Group into sections"
+                description="Keep every track, but arrange each playlist into visible chunks."
+                enabled={subgroupEnabled}
+                onToggle={() => setSubgroupEnabled((value) => !value)}
+              >
+                <SelectField label="Parameter" value={subgroupParameter} onChange={(value) => setSubgroupParameter(value as NumericParameter)}>
+                  {NUMERIC_PARAMETERS.map((parameter) => <option key={parameter.value} value={parameter.value}>{parameter.label}</option>)}
+                </SelectField>
+                <SelectField label="Sections" value={subgroupBinCount} onChange={(value) => setSubgroupBinCount(Number(value))}>
+                  {LEVEL_OPTIONS.map((count) => <option key={count} value={count}>{count} sections</option>)}
+                </SelectField>
+              </RecipeStep>
+
+              <RecipeStep
+                number="3"
+                title="Sort within scope"
+                description={subgroupEnabled ? "Sort inside each section; section order stays intact." : "Sort each basis playlist independently."}
+                enabled={sortEnabled}
+                onToggle={() => setSortEnabled((value) => !value)}
+              >
+                <SelectField label="Parameter" value={sortParameter} onChange={(value) => setSortParameter(value as SortParameter)}>
+                  {SORT_PARAMETERS.map((parameter) => <option key={parameter.value} value={parameter.value}>{parameter.label}</option>)}
+                </SelectField>
+                <SelectField label="Direction" value={sortDirection} onChange={(value) => setSortDirection(value as SortDirection)}>
+                  <option value="ascending">{sortDirectionLabels[0]}</option>
+                  <option value="descending">{sortDirectionLabels[1]}</option>
+                </SelectField>
+              </RecipeStep>
+
+              <div className="recipe-sentence">
+                <span className="block text-[10px] uppercase tracking-[0.16em] text-mist/45">Live recipe</span>
+                <p className="mt-2 text-sm leading-6 text-white/75">{recipeSentence}.</p>
+              </div>
+            </aside>
+
+            <div className="min-w-0">
+              <section className="distribution-panel" aria-labelledby="distribution-heading">
+                <header className="flex flex-col justify-between gap-4 border-b border-line px-5 py-5 sm:flex-row sm:items-end">
+                  <div>
+                    <p className="eyebrow">Analyze the source pool</p>
+                    <h2 id="distribution-heading" className="mt-1 font-display text-xl font-semibold">Distribution</h2>
+                    <p className="mt-2"><DistributionLegend parameter={distributionParameter} /></p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:w-[22rem]">
+                    <SelectField label="Parameter" value={distributionParameter} onChange={(value) => setDistributionParameter(value as NumericParameter)}>
+                      {NUMERIC_PARAMETERS.map((parameter) => <option key={parameter.value} value={parameter.value}>{parameter.label}</option>)}
+                    </SelectField>
+                    <SelectField label="Histogram bins" value={distributionBinCount} onChange={(value) => setDistributionBinCount(Number(value))}>
+                      {[5, 6, 8, 10, 12].map((count) => <option key={count} value={count}>{count} bins</option>)}
+                    </SelectField>
+                  </div>
+                </header>
+                <div className="px-5 pb-5 pt-2">
+                  <DistributionChart distribution={distribution} splitBinCount={splitEnabled && splitParameter === distributionParameter ? splitBinCount : null} />
+                  <div className="distribution-table" aria-label="Distribution bin values">
+                    {distribution.bins.map((bin) => (
+                      <div key={bin.id}>
+                        <span>{bin.label}</span>
+                        <strong>{bin.track_count}</strong>
+                        <small>{bin.percentage.toFixed(1)}%</small>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+
+              <section className="mt-10" aria-labelledby="outputs-heading">
+                <header className="flex flex-col justify-between gap-3 border-b border-line pb-5 sm:flex-row sm:items-end">
+                  <div>
+                    <p className="eyebrow">Output preview</p>
+                    <h2 id="outputs-heading" className="mt-1 font-display text-2xl font-semibold">
+                      {preview?.outputs.length ?? 0} basis playlist{preview?.outputs.length === 1 ? "" : "s"}
+                    </h2>
+                    <p className="mt-2 text-sm text-mist/55">Every playlist and every track stays visible below.</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-mist/55" aria-live="polite">
+                    <span className={`status-dot ${previewing ? "working" : ""}`} />
+                    {previewing ? "Updating preview" : `${preview?.deduplicated_track_count ?? uniqueTracks.length} unique tracks`}
+                  </div>
+                </header>
+
+                {(error || preview?.warnings.length) && (
+                  <div className="notice" role={error ? "alert" : "status"}>
+                    {error ?? preview?.warnings.join(" ")}
+                  </div>
+                )}
+
+                <div className={`mt-5 space-y-6 transition-opacity ${previewing ? "opacity-55" : "opacity-100"}`}>
+                  {preview?.outputs.map((output, index) => (
+                    <OutputPlaylistCard
+                      key={output.id}
+                      output={output}
+                      outputIndex={index}
+                      splitParameter={splitEnabled ? splitParameter : null}
+                      subgroupParameter={subgroupEnabled ? subgroupParameter : null}
+                      sortParameter={sortEnabled ? sortParameter : null}
+                      sortDirection={sortDirection}
+                    />
+                  ))}
+                </div>
+              </section>
+            </div>
+          </div>
+        )}
       </main>
 
-      <footer className="mx-auto flex max-w-[1500px] items-center justify-between border-t border-line px-5 py-6 text-[11px] text-mist/40 lg:px-8">
-        <span>Sequence · V0.1 foundation</span>
-        <span>Original playlists are always read-only</span>
+      <footer className="mx-auto flex max-w-[1480px] flex-col justify-between gap-3 border-t border-line px-5 py-7 text-[11px] text-mist/45 sm:flex-row lg:px-8">
+        <span>Sequence · V0.2 organization pipeline</span>
+        <span>Source playlists remain read-only · Fixture features are clearly labeled</span>
       </footer>
     </div>
   );

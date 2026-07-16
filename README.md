@@ -1,16 +1,39 @@
 # Spotify Playlist Optimizer
 
-An early full-stack foundation for **Sequence**, a web app that turns a source playlist into
-an intentional listening journey using energy, tempo, harmonic key, and user-defined
-constraints—without modifying the original playlist.
+An early full-stack foundation for **Sequence**, a web app that turns one or more source
+playlists into clearly defined output playlists using musical-feature distributions, nested
+groups, and scoped sorting—without modifying the originals.
+
+## Core organization workflow
+
+Sequence treats playlist organization as a visible, composable pipeline:
+
+1. **Select inputs:** choose one or multiple source playlists to form a working track pool.
+2. **Inspect a distribution:** choose a feature such as energy or danceability and see its
+   distribution before deciding how to organize the tracks.
+3. **Split into basis playlists:** partition the working pool into levels or bins. Each bin
+   becomes a separate proposed output playlist.
+4. **Optionally subgroup:** divide the tracks inside each basis playlist into contiguous chunks
+   using another feature. Subgrouping retains every track in the same playlist; it creates
+   visible sections, not additional output playlists.
+5. **Sort at the smallest scope:** choose BPM, key, metadata, or another feature for ordering.
+   When subgroups exist, each subgroup is sorted independently so tracks never cross a subgroup
+   boundary. Without subgroups, the basis playlist itself is the sort scope.
+6. **Preview full track lists:** inspect every proposed playlist and its group boundaries before
+   export.
+
+For example, a user can combine two source playlists, split the combined energy distribution
+into three basis playlists, subgroup each one into danceability levels, and sort tracks by BPM
+inside each danceability group. [ADR 0002](docs/decisions/0002-organization-pipeline-semantics.md)
+defines these operation boundaries as product invariants.
 
 ## What is working
 
-- React + TypeScript preview workspace with a responsive Tailwind UI
-- Interactive energy timeline, track statistics, manual drag ordering, pin, lock, and remove
+- React + TypeScript organization workspace with a responsive Tailwind UI
+- Multi-playlist input selection and a distribution-first split, subgroup, and sort workflow
+- Proposed-playlist previews with full track lists and visible group boundaries
 - FastAPI service with typed request/response models and OpenAPI docs
-- Six deterministic V1 strategies: energy buckets, progression, pyramid, BPM first, key first,
-  and energy → BPM → key
+- Deterministic equal-width binning, scoped sorting, Camelot key ordering, and missing-data retention
 - Camelot key conversion, constraint reporting, explicit-track filtering, and demo fixtures
 - Unit tests for the API, strategies, and frontend helpers
 - CI for web build/type-check/tests and API lint/tests
@@ -51,7 +74,7 @@ apps/
   api/    FastAPI routes, domain models, strategies, and tests
   web/    React preview experience and visualization components
 docs/
-  decisions/  Architecture decisions and platform constraints
+  decisions/  Architecture, product-semantics, and platform decisions
   PRD.md      Product requirements
 ```
 
@@ -79,14 +102,17 @@ Official references:
 
 ## Delivery roadmap
 
-1. **Foundation (this repository):** provider-neutral optimizer, fixtures, preview UI, tests.
+1. **Foundation (this repository):** provider-neutral optimizer, fixtures, distribution-first
+   organization workspace, full track-list previews, and tests.
 2. **Spotify metadata:** Authorization Code + PKCE, encrypted server session, owned playlist
    import, pagination, and rate-limit handling.
 3. **Feature source decision:** verify legacy extended access or integrate a lawful alternate
    analysis provider; never manufacture unavailable Spotify values.
-4. **Safe export:** explicit preview confirmation, create-new-playlist default, idempotency,
+4. **Organization pipeline:** persist multi-input working sets, configurable distribution bins,
+   custom or equal-count bin boundaries, manual membership changes, and saved recipes.
+5. **Safe export:** explicit preview confirmation, create-new-playlist default, idempotency,
    chunked writes, and an audit record. Original playlists remain read-only.
-5. **Advanced solver:** hard constraints plus beam search/simulated annealing with benchmarks
+6. **Advanced solver:** hard constraints plus beam search/simulated annealing with benchmarks
    against 500-track playlists.
 
 ## Product guardrails
@@ -96,3 +122,7 @@ Official references:
 - Treat album artwork and Spotify metadata according to Spotify attribution policy.
 - Do not imply fixture, estimated, or externally sourced features came from Spotify.
 - Export is a separate, explicit action after preview—not a side effect of optimization.
+- A proposed output is not previewed as a summary card alone; its complete track list remains
+  inspectable before export.
+- Subgrouping never drops tracks or silently creates more playlists, and sorting never moves a
+  track across an established subgroup boundary.

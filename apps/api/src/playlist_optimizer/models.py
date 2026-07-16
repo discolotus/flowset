@@ -11,6 +11,40 @@ Strategy = Literal[
     "energy_bpm_key",
 ]
 
+NumericParameter = Literal[
+    "energy",
+    "danceability",
+    "valence",
+    "tempo",
+    "acousticness",
+    "instrumentalness",
+    "speechiness",
+    "liveness",
+    "loudness",
+    "release_year",
+    "duration",
+]
+
+SortParameter = Literal[
+    "energy",
+    "danceability",
+    "valence",
+    "tempo",
+    "acousticness",
+    "instrumentalness",
+    "speechiness",
+    "liveness",
+    "loudness",
+    "release_year",
+    "duration",
+    "duration_ms",
+    "key",
+    "name",
+    "artist",
+    "album",
+]
+SortDirection = Literal["asc", "desc", "ascending", "descending"]
+
 
 class AudioFeatures(BaseModel):
     tempo: float = Field(ge=0)
@@ -89,6 +123,101 @@ class GeneratedPlaylist(BaseModel):
 class OptimizationResponse(BaseModel):
     strategy: Strategy
     generated_playlists: list[GeneratedPlaylist]
+    warnings: list[str] = Field(default_factory=list)
+
+
+class InputPlaylist(BaseModel):
+    id: str
+    name: str
+    tracks: list[Track] = Field(default_factory=list, max_length=5000)
+
+
+class BinSpec(BaseModel):
+    parameter: NumericParameter
+    bin_count: int = Field(default=5, ge=2, le=12)
+
+
+class SortSpec(BaseModel):
+    parameter: SortParameter
+    direction: SortDirection = "asc"
+
+
+class RecipePreviewRequest(BaseModel):
+    name: str = Field(default="Optimized playlist", min_length=1, max_length=100)
+    input_playlists: list[InputPlaylist] = Field(min_length=1, max_length=50)
+    distribution_parameter: NumericParameter = "energy"
+    distribution_bin_count: int = Field(default=5, ge=2, le=12)
+    split: BinSpec | None = None
+    subgroup: BinSpec | None = None
+    sort: SortSpec | None = None
+
+    @model_validator(mode="after")
+    def validate_combined_track_count(self) -> "RecipePreviewRequest":
+        track_count = sum(len(playlist.tracks) for playlist in self.input_playlists)
+        if track_count == 0:
+            raise ValueError("At least one input track is required")
+        if track_count > 5000:
+            raise ValueError("A recipe preview accepts at most 5000 input tracks")
+        return self
+
+
+class ValueRange(BaseModel):
+    minimum: float
+    maximum: float
+    maximum_inclusive: bool = False
+
+
+class DistributionBin(BaseModel):
+    id: str
+    index: int
+    label: str
+    range: ValueRange
+    track_count: int
+    percentage: float
+
+
+class ParameterDistribution(BaseModel):
+    parameter: NumericParameter
+    requested_bin_count: int
+    minimum: float | None
+    maximum: float | None
+    bins: list[DistributionBin]
+    unavailable_track_count: int = 0
+
+
+class PlaylistGroup(BaseModel):
+    id: str
+    index: int
+    label: str
+    parameter: NumericParameter | None = None
+    bin_index: int | None = None
+    range: ValueRange | None = None
+    start_index: int
+    end_index_exclusive: int
+    track_count: int
+    tracks: list[Track]
+
+
+class RecipeOutputPlaylist(BaseModel):
+    id: str
+    name: str
+    split_parameter: NumericParameter | None = None
+    bin_index: int | None = None
+    range: ValueRange | None = None
+    track_count: int
+    tracks: list[Track]
+    groups: list[PlaylistGroup] = Field(default_factory=list)
+    summary: PlaylistSummary
+
+
+class RecipePreviewResponse(BaseModel):
+    recipe_name: str
+    input_playlist_count: int
+    input_track_count: int
+    deduplicated_track_count: int
+    duplicate_track_count: int
+    distribution: ParameterDistribution
+    outputs: list[RecipeOutputPlaylist]
     warnings: list[str] = Field(default_factory=list)
 
 

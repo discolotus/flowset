@@ -1,8 +1,10 @@
 import type {
   DemoPlaylist,
-  OptimizationResponse,
-  Strategy,
-  Track,
+  InputPlaylist,
+  NumericParameter,
+  RecipePreviewResponse,
+  SortDirection,
+  SortParameter,
 } from "./types";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -13,33 +15,43 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function getDemoPlaylist(): Promise<DemoPlaylist> {
-  return request<DemoPlaylist>("/api/v1/demo");
+export function getDemoPlaylists(): Promise<DemoPlaylist[]> {
+  return request<DemoPlaylist[]>("/api/v1/demo/playlists");
 }
 
-export function optimizePlaylist(input: {
+export function previewRecipe(input: {
   name: string;
-  strategy: Strategy;
-  tracks: Track[];
-  maximumBpmJump?: number;
-  maximumEnergyJump?: number;
-  minimumArtistSpacing: number;
-  excludeExplicit: boolean;
-}): Promise<OptimizationResponse> {
-  return request<OptimizationResponse>("/api/v1/optimize", {
+  inputPlaylists: InputPlaylist[];
+  distributionParameter: NumericParameter;
+  distributionBinCount: number;
+  split: { parameter: NumericParameter; binCount: number } | null;
+  subgroup: { parameter: NumericParameter; binCount: number } | null;
+  sort: { parameter: SortParameter; direction: SortDirection } | null;
+}): Promise<RecipePreviewResponse> {
+  return request<RecipePreviewResponse>("/api/v1/recipes/preview", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      name: `${input.name} — Optimized`,
-      strategy: input.strategy,
-      tracks: input.tracks,
-      constraints: {
-        maximum_bpm_jump: input.maximumBpmJump,
-        maximum_energy_jump: input.maximumEnergyJump,
-        minimum_artist_spacing: input.minimumArtistSpacing,
-        avoid_duplicate_artists: input.minimumArtistSpacing > 0,
-        exclude_explicit: input.excludeExplicit,
-      },
+      name: input.name,
+      input_playlists: input.inputPlaylists.map(({ id, name, tracks }) => ({
+        id,
+        name,
+        tracks,
+      })),
+      distribution_parameter: input.distributionParameter,
+      distribution_bin_count: input.distributionBinCount,
+      split: input.split
+        ? { parameter: input.split.parameter, bin_count: input.split.binCount }
+        : null,
+      subgroup: input.subgroup
+        ? { parameter: input.subgroup.parameter, bin_count: input.subgroup.binCount }
+        : null,
+      sort: input.sort
+        ? {
+            parameter: input.sort.parameter,
+            direction: input.sort.direction === "ascending" ? "asc" : "desc",
+          }
+        : null,
     }),
   });
 }
