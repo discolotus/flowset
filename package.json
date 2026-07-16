@@ -1,0 +1,22 @@
+{
+  "name": "spotify-playlist-optimizer",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently --names api,web --prefix-colors magenta,cyan \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "cd apps/api && UV_CACHE_DIR=.uv-cache uv run uvicorn playlist_optimizer.main:app --reload",
+    "dev:web": "npm run dev --workspace @playlist-optimizer/web",
+    "build": "npm run build --workspace @playlist-optimizer/web",
+    "lint": "npm run lint --workspace @playlist-optimizer/web && cd apps/api && UV_CACHE_DIR=.uv-cache uv run ruff check .",
+    "test": "npm run test --workspace @playlist-optimizer/web && cd apps/api && UV_CACHE_DIR=.uv-cache uv run pytest"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

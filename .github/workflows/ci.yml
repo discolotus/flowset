@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint --workspace @playlist-optimizer/web
+      - run: npm run test --workspace @playlist-optimizer/web
+      - run: npm run build --workspace @playlist-optimizer/web
+
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --project apps/api --locked
+      - run: uv run --project apps/api ruff check apps/api
+      - run: uv run --project apps/api pytest apps/api/tests
