@@ -1,4 +1,4 @@
-from playlist_optimizer.models import AudioFeatures, Track
+from playlist_optimizer.models import AudioFeatureProvenance, AudioFeatures, Track
 
 
 def _track(
@@ -35,6 +35,10 @@ def _track(
             speechiness=0.04 + (index % 3) * 0.01,
             liveness=0.08 + (index % 4) * 0.03,
             time_signature=4,
+        ),
+        audio_feature_provenance=AudioFeatureProvenance(
+            provider="fixture",
+            notes=["Fictional demo data; not retrieved from Spotify or an analysis provider."],
         ),
     )
 

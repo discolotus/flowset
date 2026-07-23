@@ -15,6 +15,12 @@ coverage/
 *.tsbuildinfo
 .playwright-cli/
 output/
+apps/api/.models/
+apps/api/build/
+apps/api/*.spec
+src-tauri/binaries/
+src-tauri/gen/
+src-tauri/target/
 
 .idea/
 .vscode/

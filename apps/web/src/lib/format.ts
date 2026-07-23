@@ -5,8 +5,15 @@ const MINOR = ["5A", "12A", "7A", "2A", "9A", "4A", "11A", "6A", "1A", "8A", "3A
 
 export function camelot(track: Track): string {
   const features = track.audio_features;
-  if (!features || features.key < 0) return "—";
-  return (features.mode === 1 ? MAJOR : MINOR)[features.key];
+  if (
+    features?.key === null ||
+    features?.key === undefined ||
+    features.mode === null ||
+    features.mode === undefined ||
+    features.key < 0 ||
+    features.key > 11
+  ) return "—";
+  return (features.mode === 1 ? MAJOR : MINOR)[features.key] ?? "—";
 }
 
 export function duration(milliseconds: number): string {
@@ -24,7 +31,17 @@ export function runtime(milliseconds: number): string {
 
 export function flowScore(previous: Track | undefined, current: Track): number | null {
   if (!previous?.audio_features || !current.audio_features) return null;
-  const energyGap = Math.abs(previous.audio_features.energy - current.audio_features.energy);
-  const tempoGap = Math.min(Math.abs(previous.audio_features.tempo - current.audio_features.tempo) / 30, 1);
+  const previousEnergy = previous.audio_features.energy;
+  const currentEnergy = current.audio_features.energy;
+  const previousTempo = previous.audio_features.tempo;
+  const currentTempo = current.audio_features.tempo;
+  if (
+    previousEnergy == null ||
+    currentEnergy == null ||
+    previousTempo == null ||
+    currentTempo == null
+  ) return null;
+  const energyGap = Math.abs(previousEnergy - currentEnergy);
+  const tempoGap = Math.min(Math.abs(previousTempo - currentTempo) / 30, 1);
   return Math.round(Math.max(0, 1 - energyGap * 0.55 - tempoGap * 0.45) * 100);
 }

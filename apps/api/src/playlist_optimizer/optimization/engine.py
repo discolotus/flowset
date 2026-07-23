@@ -20,17 +20,21 @@ _BUCKETS = (
 
 
 def _energy(track: Track) -> float:
-    return track.audio_features.energy if track.audio_features else 2.0
+    if track.audio_features is None or track.audio_features.energy is None:
+        return 2.0
+    return track.audio_features.energy
 
 
 def _tempo(track: Track) -> float:
-    return track.audio_features.tempo if track.audio_features else 999.0
+    if track.audio_features is None or track.audio_features.tempo is None:
+        return 999.0
+    return track.audio_features.tempo
 
 
 def summarize_tracks(tracks: Iterable[Track]) -> PlaylistSummary:
     track_list = list(tracks)
     featured = [track.audio_features for track in track_list if track.audio_features]
-    energies = [features.energy for features in featured]
+    energies = [features.energy for features in featured if features.energy is not None]
 
     def mean(values: list[float]) -> float | None:
         return round(sum(values) / len(values), 3) if values else None
@@ -39,8 +43,10 @@ def summarize_tracks(tracks: Iterable[Track]) -> PlaylistSummary:
         song_count=len(track_list),
         duration_ms=sum(track.duration_ms for track in track_list),
         average_energy=mean(energies),
-        average_bpm=mean([features.tempo for features in featured]),
-        average_danceability=mean([features.danceability for features in featured]),
+        average_bpm=mean([features.tempo for features in featured if features.tempo is not None]),
+        average_danceability=mean(
+            [features.danceability for features in featured if features.danceability is not None]
+        ),
         energy_range=(round(min(energies), 3), round(max(energies), 3)) if energies else None,
     )
 
@@ -94,9 +100,21 @@ def _constraint_violations(
         previous = tracks[index - 1].audio_features
         if previous is None:
             continue
-        bpm_jump = abs(features.tempo - previous.tempo)
-        energy_jump = abs(features.energy - previous.energy)
-        if constraints.maximum_bpm_jump and bpm_jump > constraints.maximum_bpm_jump:
+        bpm_jump = (
+            abs(features.tempo - previous.tempo)
+            if features.tempo is not None and previous.tempo is not None
+            else None
+        )
+        energy_jump = (
+            abs(features.energy - previous.energy)
+            if features.energy is not None and previous.energy is not None
+            else None
+        )
+        if (
+            constraints.maximum_bpm_jump
+            and bpm_jump is not None
+            and bpm_jump > constraints.maximum_bpm_jump
+        ):
             violations.append(
                 ConstraintViolation(
                     kind="bpm_jump",
@@ -104,7 +122,11 @@ def _constraint_violations(
                     message=f"BPM changes by {bpm_jump:.1f}.",
                 )
             )
-        if constraints.maximum_energy_jump and energy_jump > constraints.maximum_energy_jump:
+        if (
+            constraints.maximum_energy_jump
+            and energy_jump is not None
+            and energy_jump > constraints.maximum_energy_jump
+        ):
             violations.append(
                 ConstraintViolation(
                     kind="energy_jump",
@@ -150,12 +172,18 @@ def optimize_tracks(request: OptimizationRequest) -> OptimizationResponse:
             bucket = [
                 track
                 for track in tracks
-                if track.audio_features and lower <= track.audio_features.energy < upper
+                if track.audio_features
+                and track.audio_features.energy is not None
+                and lower <= track.audio_features.energy < upper
             ]
             if bucket:
                 ordered = sorted(bucket, key=lambda track: (_tempo(track), camelot_key(track)))
                 playlists.append(_generated(f"{request.name} — {label}", ordered, request))
-        missing = [track for track in tracks if track.audio_features is None]
+        missing = [
+            track
+            for track in tracks
+            if track.audio_features is None or track.audio_features.energy is None
+        ]
         if missing:
             playlists.append(_generated(f"{request.name} — Unanalyzed", missing, request))
     else:

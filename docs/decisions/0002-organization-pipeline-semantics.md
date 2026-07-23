@@ -20,14 +20,17 @@ The product models organization as an ordered pipeline:
 
 1. Select one or multiple input playlists and form a working track pool.
 2. Inspect the distribution of a selected parameter.
-3. Optionally split the pool into separate basis playlists using distribution bins.
+3. Optionally split the pool into separate basis playlists using a full-factorial grid of one to
+   three independently binned parameters.
 4. Optionally subgroup each basis playlist into contiguous chunks using another parameter.
 5. Sort within the smallest active scope.
 6. Preview complete track lists before a separate export action.
 
 The following terms are invariants:
 
-- **Split** partitions tracks into separate proposed output playlists.
+- **Split** partitions tracks into separate proposed output playlists. With multiple factors,
+  every factor is binned over the same full source pool and tracks are assigned by their Cartesian
+  coordinate; factors are not applied as nested, conditional splits.
 - **Basis playlist** is an output of the split stage, or the unsplit working playlist when the
   split stage is skipped.
 - **Subgroup** is a contiguous section inside a basis playlist. It retains all tracks in that
@@ -43,13 +46,15 @@ to the user.
 ## Consequences
 
 - The UI can explain both output count and track placement before optimization runs.
+- The configured factor product, populated-cell count, and empty-cell count remain distinct; only
+  populated cells become exportable basis playlists.
 - Split membership, subgroup membership, and position are separate pieces of state.
 - Reordering within a subgroup is different from explicitly moving a track between groups.
 - Statistics and visualizations supplement the track-list preview rather than replacing it.
 - The API and persistence model will need stable identifiers for working sets, basis playlists,
   subgroups, and track memberships.
-- Tests must assert track conservation, deterministic bin membership, and preservation of group
-  boundaries during sorting.
+- Tests must assert a maximum of three split factors, global factor boundaries, deterministic
+  Cartesian membership, track conservation, and preservation of group boundaries during sorting.
 
 ## Related decision
 

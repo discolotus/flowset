@@ -1,0 +1,21 @@
+[package]
+name = "playlist-optimizer-desktop"
+version = "0.1.0"
+description = "Native macOS shell for Playlist Optimizer"
+authors = ["Tanner"]
+edition = "2021"
+rust-version = "1.88"
+
+[lib]
+name = "playlist_optimizer_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"

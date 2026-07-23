@@ -6,7 +6,7 @@ _MINOR_NUMBER = {0: 5, 1: 12, 2: 7, 3: 2, 4: 9, 5: 4, 6: 11, 7: 6, 8: 1, 9: 8, 1
 
 def camelot_key(track: Track) -> tuple[int, str]:
     features = track.audio_features
-    if features is None or features.key == -1:
+    if features is None or features.key is None or features.key == -1 or features.mode is None:
         return (99, "Z")
     if features.mode == 1:
         return (_MAJOR_NUMBER[features.key], "B")

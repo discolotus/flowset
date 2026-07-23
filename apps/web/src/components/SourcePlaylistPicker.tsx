@@ -5,6 +5,7 @@ interface SourcePlaylistPickerProps {
   playlists: InputPlaylist[];
   selectedIds: Set<string>;
   onToggle: (id: string) => void;
+  disabled?: boolean;
 }
 
 function sourceRuntime(playlist: InputPlaylist): number {
@@ -15,6 +16,7 @@ export function SourcePlaylistPicker({
   playlists,
   selectedIds,
   onToggle,
+  disabled = false,
 }: SourcePlaylistPickerProps) {
   return (
     <fieldset>
@@ -28,6 +30,7 @@ export function SourcePlaylistPicker({
               type="button"
               role="checkbox"
               aria-checked={selected}
+              disabled={disabled}
               onClick={() => onToggle(playlist.id)}
               className={`source-card group text-left ${selected ? "selected" : ""}`}
             >

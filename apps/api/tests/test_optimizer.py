@@ -20,9 +20,7 @@ def test_energy_progression_is_monotonic() -> None:
 
 
 def test_energy_buckets_keep_every_track() -> None:
-    result = optimize_tracks(
-        OptimizationRequest(strategy="energy_buckets", tracks=DEMO_TRACKS)
-    )
+    result = optimize_tracks(OptimizationRequest(strategy="energy_buckets", tracks=DEMO_TRACKS))
 
     generated_ids = {
         track.id for playlist in result.generated_playlists for track in playlist.tracks
@@ -42,9 +40,7 @@ def test_explicit_filter_is_applied() -> None:
 
 
 def test_pyramid_reaches_peak_before_the_end() -> None:
-    result = optimize_tracks(
-        OptimizationRequest(strategy="energy_pyramid", tracks=DEMO_TRACKS)
-    )
+    result = optimize_tracks(OptimizationRequest(strategy="energy_pyramid", tracks=DEMO_TRACKS))
     energies = [
         track.audio_features.energy
         for track in result.generated_playlists[0].tracks

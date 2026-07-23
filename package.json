@@ -10,13 +10,21 @@
     "dev:api": "cd apps/api && UV_CACHE_DIR=.uv-cache uv run uvicorn playlist_optimizer.main:app --reload",
     "dev:web": "npm run dev --workspace @playlist-optimizer/web",
     "build": "npm run build --workspace @playlist-optimizer/web",
+    "desktop:sidecar": "./scripts/build_desktop_sidecar.sh",
+    "desktop:build": "npm run desktop:sidecar && tauri build --bundles app",
+    "tauri": "tauri",
     "lint": "npm run lint --workspace @playlist-optimizer/web && cd apps/api && UV_CACHE_DIR=.uv-cache uv run ruff check .",
     "test": "npm run test --workspace @playlist-optimizer/web && cd apps/api && UV_CACHE_DIR=.uv-cache uv run pytest"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
     "concurrently": "^9.2.1"
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.7.1"
   }
 }

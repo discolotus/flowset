@@ -33,4 +33,11 @@ describe("format helpers", () => {
   it("scores a smooth transition highly", () => {
     expect(flowScore(track(0.5, 120), track(0.53, 122))).toBeGreaterThan(90);
   });
+  it("keeps partially available provider features display-safe", () => {
+    const partial = track(0.5, 120);
+    partial.audio_features = { tempo: 120, key: 4 };
+
+    expect(camelot(partial)).toBe("—");
+    expect(flowScore(track(0.5, 120), partial)).toBeNull();
+  });
 });

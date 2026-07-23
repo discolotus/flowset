@@ -98,6 +98,104 @@ button:active:not(:disabled) {
     @apply border-acid/35 bg-[rgba(184,222,128,.045)] shadow-[inset_0_0_0_1px_rgba(184,222,128,.06)];
   }
 
+  .source-mode-tabs {
+    @apply inline-flex rounded-lg border border-line bg-panel/50 p-1;
+  }
+
+  .source-mode-tabs button {
+    @apply rounded-md px-3 py-2 text-[11px] font-medium text-mist/50 transition hover:text-white/75;
+  }
+
+  .source-mode-tabs button.active {
+    @apply bg-acid/[0.09] text-acid shadow-[inset_0_0_0_1px_rgba(184,222,128,.16)];
+  }
+
+  .library-browser,
+  .library-candidates {
+    @apply rounded-xl border border-line bg-panel/45 p-4 sm:p-5;
+  }
+
+  .library-pathbar {
+    @apply flex min-h-12 items-center gap-3 bg-[#101411] px-3 py-2;
+  }
+
+  .library-browser-row {
+    @apply flex w-full items-center gap-3 bg-panel/30 px-3 py-3 text-left transition hover:bg-white/[0.025] disabled:cursor-wait disabled:opacity-60;
+  }
+
+  .library-folder-icon {
+    @apply grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-acid/15 bg-acid/[0.045] font-mono text-xs text-acid/65;
+  }
+
+  .library-playlist {
+    @apply flex min-h-20 items-center gap-3 rounded-xl border border-line bg-[#111512] p-3 transition hover:border-white/20;
+  }
+
+  .library-playlist.imported {
+    @apply border-acid/25 bg-acid/[0.035];
+  }
+
+  .library-empty {
+    @apply mt-4 rounded-lg border border-dashed border-line px-4 py-6 text-center text-xs text-mist/45;
+  }
+
+  .primary-button {
+    @apply rounded-md border border-acid/40 bg-acid px-3 py-2 text-[11px] font-semibold text-ink transition hover:bg-[#caee96] disabled:cursor-not-allowed disabled:border-line disabled:bg-white/[0.06] disabled:text-mist/35;
+  }
+
+  .secondary-button,
+  .compact-button {
+    @apply rounded-md border border-line px-3 py-2 text-[10px] text-mist/60 transition hover:border-white/20 hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-45;
+  }
+
+  .compact-button {
+    @apply shrink-0 px-2.5 py-1.5;
+  }
+
+  .feature-provider-panel {
+    @apply mt-6 grid gap-5 border-t border-line pt-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center;
+  }
+
+  .feature-provider {
+    @apply block cursor-pointer rounded-xl border border-line bg-panel/55 p-4 transition duration-200 hover:border-white/20 hover:bg-panel focus-within:border-acid/50 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-acid/80;
+  }
+
+  .feature-provider.selected {
+    @apply border-acid/35 bg-[rgba(184,222,128,.045)] shadow-[inset_0_0_0_1px_rgba(184,222,128,.06)];
+  }
+
+  .feature-provider.unavailable {
+    @apply cursor-not-allowed opacity-65 hover:border-line hover:bg-panel/55;
+  }
+
+  .provider-availability {
+    @apply flex shrink-0 items-center gap-1.5 rounded-[4px] border border-line bg-white/[0.025] px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-mist/50;
+  }
+
+  .provider-availability > span {
+    @apply h-1.5 w-1.5 rounded-full bg-mist/50;
+  }
+
+  .provider-availability.available {
+    @apply border-acid/20 text-acid/70;
+  }
+
+  .provider-availability.available > span {
+    @apply bg-acid;
+  }
+
+  .provider-availability.unavailable {
+    @apply border-amber-100/15 text-amber-100/55;
+  }
+
+  .provider-availability.unavailable > span {
+    @apply bg-amber-100/55;
+  }
+
+  .provider-availability.checking > span {
+    @apply animate-pulse;
+  }
+
   .source-index {
     @apply grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-[#1b211d] font-mono text-[11px] text-mist/70;
   }
@@ -211,6 +309,295 @@ button:active:not(:disabled) {
     @apply mt-5 rounded-lg border border-amber-200/15 bg-amber-200/[0.045] px-4 py-3 text-xs leading-5 text-amber-50/70;
   }
 
+  .analysis-pipeline {
+    @apply overflow-hidden rounded-2xl border border-line bg-panel/80 shadow-[0_22px_70px_rgba(0,10,4,.22)];
+  }
+
+  .analysis-pipeline-header {
+    @apply flex items-start justify-between gap-5 border-b border-line bg-white/[0.012] px-5 py-5;
+  }
+
+  .analysis-pipeline-title {
+    @apply mt-1 font-display text-xl font-semibold tracking-tight text-white;
+  }
+
+  .analysis-progress-count {
+    @apply flex shrink-0 items-baseline gap-1 font-mono tabular-nums;
+  }
+
+  .analysis-progress-count strong {
+    @apply text-xl font-medium text-acid/90;
+  }
+
+  .analysis-progress-count span {
+    @apply text-[11px] text-mist/45;
+  }
+
+  .analysis-progress-summary {
+    @apply px-5 pt-4;
+  }
+
+  .analysis-progress-copy {
+    @apply mb-2 flex items-center justify-between gap-4 text-[10px] text-mist/55;
+  }
+
+  .analysis-progress-copy span:last-child {
+    @apply font-mono tabular-nums text-acid/70;
+  }
+
+  .analysis-progress-bar {
+    width: 100%;
+    height: 0.35rem;
+    overflow: hidden;
+    appearance: none;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.055);
+  }
+
+  .analysis-progress-bar::-webkit-progress-bar {
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.055);
+  }
+
+  .analysis-progress-bar::-webkit-progress-value {
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(151, 194, 98, 0.82), #b8de80);
+    box-shadow: 0 0 14px rgba(184, 222, 128, 0.18);
+    transition: width 300ms ease;
+  }
+
+  .analysis-progress-bar::-moz-progress-bar {
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(151, 194, 98, 0.82), #b8de80);
+  }
+
+  .analysis-current-track {
+    @apply mx-5 mt-4 grid gap-4 rounded-xl border border-line bg-[#101411] px-4 py-3.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center;
+  }
+
+  .analysis-phase {
+    @apply inline-flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.08em] text-mist/55;
+  }
+
+  .analysis-phase > span {
+    @apply h-1.5 w-1.5 rounded-full bg-mist/45;
+  }
+
+  .analysis-phase.decoding,
+  .analysis-phase.dsp,
+  .analysis-phase.tensorflow,
+  .analysis-phase.finalizing {
+    @apply text-acid/75;
+  }
+
+  .analysis-phase.decoding > span,
+  .analysis-phase.dsp > span,
+  .analysis-phase.tensorflow > span,
+  .analysis-phase.finalizing > span {
+    @apply animate-pulse bg-acid;
+  }
+
+  .analysis-phase.done,
+  .analysis-phase.cached {
+    @apply text-acid/70;
+  }
+
+  .analysis-phase.done > span,
+  .analysis-phase.cached > span {
+    @apply bg-acid/80;
+  }
+
+  .analysis-phase.error {
+    @apply text-red-200/80;
+  }
+
+  .analysis-phase.error > span {
+    @apply bg-red-300/80;
+  }
+
+  .analysis-phase.incomplete {
+    @apply text-amber-100/80;
+  }
+
+  .analysis-phase.incomplete > span {
+    @apply bg-amber-200/80;
+  }
+
+  .analysis-current-name {
+    @apply mt-1 truncate text-sm font-medium text-white/85;
+  }
+
+  .analysis-error-message {
+    @apply mt-1.5 text-[11px] leading-4 text-red-200/70;
+  }
+
+  .analysis-error-message.incomplete {
+    @apply text-amber-100/65;
+  }
+
+  .analysis-current-timing {
+    @apply flex flex-wrap items-end gap-x-5 gap-y-2 md:justify-end;
+  }
+
+  .analysis-current-timing > div {
+    @apply min-w-12;
+  }
+
+  .analysis-current-timing dt {
+    @apply text-[8px] font-semibold uppercase tracking-[0.1em] text-mist/35;
+  }
+
+  .analysis-current-timing dd {
+    @apply mt-0.5 font-mono text-[10px] tabular-nums text-white/65;
+  }
+
+  .analysis-current-timing .analysis-eta {
+    @apply min-w-32;
+  }
+
+  .analysis-stage-list {
+    @apply grid gap-2 px-5 py-4;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  }
+
+  .analysis-stage {
+    @apply flex min-w-0 items-center gap-2 rounded-lg border border-line bg-white/[0.018] px-2.5 py-2.5 transition-colors;
+  }
+
+  .analysis-stage-mark {
+    @apply grid h-6 w-6 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.025] font-mono text-[8px] tabular-nums text-mist/45;
+  }
+
+  .analysis-stage strong,
+  .analysis-stage small {
+    @apply block truncate;
+  }
+
+  .analysis-stage strong {
+    @apply text-[10px] font-medium text-white/65;
+  }
+
+  .analysis-stage small {
+    @apply mt-0.5 text-[8px] text-mist/35;
+  }
+
+  .analysis-stage[data-state="active"] {
+    @apply border-acid/25 bg-acid/[0.045];
+  }
+
+  .analysis-stage[data-state="active"] .analysis-stage-mark {
+    @apply border-acid/30 bg-acid/[0.1] text-acid;
+  }
+
+  .analysis-stage[data-state="active"] strong {
+    @apply text-acid/85;
+  }
+
+  .analysis-stage[data-state="done"] .analysis-stage-mark,
+  .analysis-stage[data-state="cached"] .analysis-stage-mark {
+    @apply border-acid/20 text-acid/70;
+  }
+
+  .analysis-stage[data-state="skipped"] {
+    @apply opacity-60;
+  }
+
+  .analysis-stage[data-state="error"] {
+    @apply border-red-300/20 bg-red-300/[0.035];
+  }
+
+  .analysis-stage[data-state="error"] .analysis-stage-mark,
+  .analysis-stage[data-state="error"] strong {
+    @apply border-red-300/25 text-red-200/80;
+  }
+
+  .analysis-track-details {
+    @apply border-t border-line;
+  }
+
+  .analysis-track-details summary {
+    @apply flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-3 text-[10px] text-mist/55 transition hover:bg-white/[0.018] hover:text-white/70;
+  }
+
+  .analysis-track-details summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .analysis-track-details summary > span:first-child {
+    @apply flex items-baseline gap-2;
+  }
+
+  .analysis-track-details summary small {
+    @apply font-mono text-[8px] text-mist/35;
+  }
+
+  .analysis-track-details summary > span:last-child {
+    @apply font-mono text-[8px] uppercase tracking-[0.08em] text-acid/60;
+  }
+
+  .analysis-track-table-wrap {
+    @apply max-h-80 overflow-auto border-t border-line;
+  }
+
+  .analysis-track-table {
+    @apply w-full border-collapse text-left;
+  }
+
+  .analysis-track-table thead {
+    @apply sticky top-0 z-10 bg-[#101411];
+  }
+
+  .analysis-track-table th,
+  .analysis-track-table td {
+    @apply border-b border-line/70 px-5 py-2.5;
+  }
+
+  .analysis-track-table thead th {
+    @apply text-[8px] font-semibold uppercase tracking-[0.1em] text-mist/35;
+  }
+
+  .analysis-track-table tbody th {
+    @apply max-w-0 font-normal;
+  }
+
+  .analysis-track-table tbody th > span,
+  .analysis-track-table tbody th > small {
+    @apply block truncate;
+  }
+
+  .analysis-track-table tbody th > span {
+    @apply text-[11px] text-white/75;
+  }
+
+  .analysis-track-table tbody th > small {
+    @apply mt-0.5 text-[9px] text-mist/35;
+  }
+
+  .analysis-track-table td {
+    @apply w-28 font-mono text-[9px] tabular-nums text-mist/45;
+  }
+
+  .analysis-track-status {
+    @apply text-mist/50;
+  }
+
+  .analysis-track-status.decoding,
+  .analysis-track-status.dsp,
+  .analysis-track-status.tensorflow,
+  .analysis-track-status.done,
+  .analysis-track-status.cached {
+    @apply text-acid/65;
+  }
+
+  .analysis-track-status.error {
+    @apply text-red-200/75;
+  }
+
+  .analysis-track-status.incomplete {
+    @apply text-amber-100/70;
+  }
+
   .output-playlist {
     @apply overflow-hidden rounded-2xl border border-line bg-panel/75 shadow-[0_22px_70px_rgba(0,10,4,.22)];
   }
@@ -223,8 +610,58 @@ button:active:not(:disabled) {
     @apply grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-acid/20 bg-acid/[0.055] font-mono text-xs text-acid/80;
   }
 
+  .factor-assignment-list {
+    @apply mt-3 flex flex-wrap gap-1.5;
+  }
+
+  .factor-assignment-list > span {
+    @apply rounded-md border border-acid/15 bg-acid/[0.045] px-2 py-1 font-mono text-[8px] uppercase tracking-[0.06em] text-acid/65;
+  }
+
   .export-button {
-    @apply self-start rounded-md border border-line px-3 py-2 text-[11px] text-mist/40 transition disabled:cursor-not-allowed;
+    @apply self-start rounded-md border border-acid/25 bg-acid/[0.055] px-3 py-2 text-[11px] text-acid/80 transition hover:border-acid/45 hover:bg-acid/[0.09] disabled:cursor-not-allowed disabled:opacity-55;
+  }
+
+  .row-density-toggle {
+    @apply flex items-center gap-2 rounded-md border border-line bg-white/[0.02] px-3 py-2 text-[11px] text-mist/60 transition hover:border-white/20 hover:text-white/80;
+  }
+
+  .row-density-toggle svg {
+    @apply h-4 w-4 fill-none stroke-current;
+    stroke-linecap: round;
+    stroke-width: 1.4;
+  }
+
+  .row-density-toggle.active {
+    @apply border-acid/30 bg-acid/[0.075] text-acid/85 shadow-[inset_0_0_0_1px_rgba(184,222,128,.04)];
+  }
+
+  .export-feedback {
+    @apply basis-full break-all text-right text-[10px] leading-4 text-acid/70;
+  }
+
+  .export-feedback.error {
+    @apply text-red-300/85;
+  }
+
+  .output-actions {
+    @apply flex shrink-0 flex-wrap items-end gap-2 sm:justify-end;
+  }
+
+  .metric-inspector {
+    @apply block min-w-[11rem];
+  }
+
+  .metric-inspector > span {
+    @apply mb-1.5 flex items-center justify-between gap-3 text-[9px] font-semibold uppercase tracking-[0.11em] text-mist/45;
+  }
+
+  .metric-inspector > span small {
+    @apply font-mono text-[8px] font-normal normal-case tracking-normal text-mist/35;
+  }
+
+  .metric-inspector select {
+    @apply w-full rounded-md border border-line bg-ink/70 px-2.5 py-2 text-[11px] text-white/75 outline-none transition hover:border-white/20 focus:border-acid/50;
   }
 
   .playlist-body {
@@ -247,16 +684,69 @@ button:active:not(:disabled) {
     @apply flex min-h-[4.25rem] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.018] sm:px-5;
   }
 
+  .track-position-slot {
+    @apply relative grid h-8 w-6 shrink-0 place-items-center;
+  }
+
   .track-position {
-    @apply w-6 shrink-0 font-mono text-[10px] tabular-nums text-mist/35;
+    @apply font-mono text-[10px] tabular-nums text-mist/35 transition duration-150;
+  }
+
+  .track-preview-button {
+    @apply absolute grid h-7 w-7 place-items-center rounded-full border border-white/10 bg-[#1b211d] text-mist/75 opacity-0 shadow-[0_3px_12px_rgba(0,0,0,.3)] transition duration-150 hover:border-acid/30 hover:bg-acid/[0.1] hover:text-acid;
+  }
+
+  .track-preview-button svg {
+    @apply h-3.5 w-3.5 fill-current;
+  }
+
+  .track-position-slot.has-preview:focus-within .track-position,
+  .track-position-slot.has-preview.active .track-position,
+  .track-row:hover .track-position-slot.has-preview .track-position {
+    @apply opacity-0;
+  }
+
+  .track-position-slot.has-preview:focus-within .track-preview-button,
+  .track-position-slot.has-preview.active .track-preview-button,
+  .track-row:hover .track-position-slot.has-preview .track-preview-button {
+    @apply opacity-100;
+  }
+
+  .track-preview-button.playing,
+  .track-preview-button.loading {
+    @apply border-acid/35 bg-acid/[0.12] text-acid;
+  }
+
+  .track-preview-button.error {
+    @apply border-red-300/25 bg-red-300/[0.08] text-red-200/85;
+  }
+
+  .track-preview-spinner {
+    @apply h-3.5 w-3.5 animate-spin rounded-full border-2 border-acid/25 border-t-acid;
+  }
+
+  .track-preview-error {
+    @apply font-mono text-[11px] font-semibold leading-none;
   }
 
   .track-cover {
     @apply grid h-9 w-9 shrink-0 place-items-center rounded-md border border-white/10 text-[10px] font-semibold text-white/70 shadow-inner;
   }
 
-  .track-row > span:nth-child(3) {
+  .track-details {
     @apply flex-1;
+  }
+
+  .track-title-line {
+    @apply flex min-w-0 items-center gap-2;
+  }
+
+  .track-title {
+    @apply block truncate text-sm font-medium text-white/90;
+  }
+
+  .track-byline {
+    @apply mt-0.5 block truncate text-[11px] text-mist/55;
   }
 
   .track-metric {
@@ -273,6 +763,589 @@ button:active:not(:disabled) {
 
   .explicit-mark {
     @apply rounded-[3px] bg-white/10 px-1 py-0.5 text-[8px] text-mist/60;
+  }
+
+  .row-density-compact .track-row {
+    @apply min-h-9 gap-2.5 px-4 py-1 sm:px-5;
+  }
+
+  .row-density-compact .track-cover {
+    @apply hidden;
+  }
+
+  .row-density-compact .track-position-slot {
+    @apply h-7;
+  }
+
+  .row-density-compact .track-details {
+    @apply flex min-w-0 items-center gap-2 overflow-hidden;
+  }
+
+  .row-density-compact .track-title-line {
+    @apply min-w-0 flex-[1_1_55%];
+  }
+
+  .row-density-compact .track-title {
+    @apply text-xs;
+  }
+
+  .row-density-compact .track-byline {
+    @apply mt-0 min-w-0 flex-[1_1_45%] text-[10px];
+  }
+
+  .row-density-compact .track-byline::before {
+    margin-right: 0.5rem;
+    color: rgba(158, 170, 161, 0.32);
+    content: "—";
+  }
+
+  .row-density-compact .track-metric {
+    @apply leading-none;
+  }
+
+  .row-density-compact .track-metric small {
+    @apply mb-0 mr-1 inline text-[7px];
+  }
+
+  .row-density-compact .track-preview-button {
+    @apply h-7 w-7;
+  }
+
+  .export-destinations {
+    @apply mt-5 overflow-hidden rounded-2xl border border-line bg-panel/70 shadow-[0_22px_70px_rgba(0,10,4,.18)];
+  }
+
+  .export-destinations-heading {
+    @apply flex flex-col justify-between gap-2 border-b border-line bg-white/[0.012] px-5 py-4 sm:flex-row sm:items-end;
+  }
+
+  .export-destinations-heading h3 {
+    @apply mt-1 font-display text-lg font-semibold text-white/90;
+  }
+
+  .export-destinations-heading > span {
+    @apply font-mono text-[10px] tabular-nums text-mist/45;
+  }
+
+  .export-destination-grid {
+    @apply grid gap-px bg-line lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5;
+  }
+
+  .export-destination-card {
+    @apply flex min-h-52 flex-col items-start bg-[#101411] px-5 py-4;
+  }
+
+  .export-destination-card.featured {
+    @apply bg-[linear-gradient(145deg,rgba(184,222,128,.075),rgba(16,20,17,.98)_65%)];
+  }
+
+  .export-destination-kicker {
+    @apply font-mono text-[8px] uppercase tracking-[0.1em] text-acid/55;
+  }
+
+  .export-destination-card h4 {
+    @apply mt-2 font-display text-base font-semibold text-white/90;
+  }
+
+  .export-destination-card > p:not(.export-destination-message) {
+    @apply mt-2 flex-1 text-[11px] leading-5 text-mist/55;
+  }
+
+  .export-destination-card .export-button {
+    @apply mt-4;
+  }
+
+  .export-destination-card small,
+  .apple-music-review small {
+    @apply mt-2 block text-[9px] leading-4 text-amber-100/55;
+  }
+
+  .export-destination-message {
+    @apply mt-3 text-[10px] leading-4 text-acid/70;
+  }
+
+  .export-destination-message.error {
+    @apply text-red-200/80;
+  }
+
+  .mp3-export-progress {
+    @apply mt-3 w-full text-[9px] leading-4 text-acid/70;
+  }
+
+  .mp3-export-progress progress {
+    @apply mb-1 block h-1.5 w-full overflow-hidden rounded-full accent-acid;
+  }
+
+  .mp3-export-progress span {
+    @apply block break-words;
+  }
+
+  .apple-music-review {
+    @apply flex flex-col justify-between gap-4 border-t border-acid/15 bg-acid/[0.045] px-5 py-4 sm:flex-row sm:items-center;
+  }
+
+  .apple-music-review strong {
+    @apply text-sm font-medium text-white/90;
+  }
+
+  .apple-music-review p {
+    @apply mt-1 text-[11px] leading-5 text-mist/60;
+  }
+
+  .apple-music-review-actions {
+    @apply flex shrink-0 items-center gap-2;
+  }
+
+  .export-button.subtle {
+    @apply border-line bg-transparent text-mist/60 hover:border-white/20 hover:text-white/80;
+  }
+
+  .export-destination-footnote {
+    @apply border-t border-line px-5 py-3 text-[10px] leading-4 text-mist/45;
+  }
+
+  .spotify-destination-card {
+    @apply bg-[linear-gradient(145deg,rgba(29,185,84,.07),rgba(16,20,17,.98)_65%)] lg:col-span-2 2xl:col-span-1;
+  }
+
+  .spotify-destination-card small.spotify-connected {
+    @apply text-acid/65;
+  }
+
+  .spotify-card-links {
+    @apply mt-2 flex gap-3;
+  }
+
+  .spotify-card-links button {
+    @apply text-[9px] text-mist/45 underline decoration-white/15 underline-offset-2 transition hover:text-white/75;
+  }
+
+  .spotify-workspace {
+    grid-column: 1 / -1;
+    @apply bg-[#0f1310];
+  }
+
+  .spotify-workspace-header {
+    @apply flex flex-col justify-between gap-3 border-b border-line px-5 py-4 sm:flex-row sm:items-center;
+  }
+
+  .spotify-workspace-header h4 {
+    @apply mt-1 font-display text-base font-semibold text-white/90;
+  }
+
+  .spotify-status {
+    @apply self-start rounded-full border border-line px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-mist/50;
+  }
+
+  .spotify-status.connected {
+    @apply border-acid/20 bg-acid/[0.045] text-acid/70;
+  }
+
+  .spotify-setup {
+    @apply grid gap-4 border-b border-line px-5 py-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(15rem,.8fr)_auto] lg:items-end;
+  }
+
+  .spotify-setup-copy p {
+    @apply text-[10px] leading-4 text-white/65;
+  }
+
+  .spotify-setup-copy small {
+    @apply mt-1 block text-[9px] leading-4 text-mist/45;
+  }
+
+  .spotify-preflight {
+    @apply border-b border-red-200/15 bg-red-200/[0.035] px-5 py-4 text-[10px] leading-4 text-red-100/75;
+  }
+
+  .spotify-preflight strong {
+    @apply text-xs text-red-100/85;
+  }
+
+  .spotify-preflight p {
+    @apply mt-1;
+  }
+
+  .spotify-review-summary {
+    @apply flex flex-col justify-between gap-4 border-b border-line px-5 py-4 md:flex-row md:items-center;
+  }
+
+  .spotify-review-summary strong {
+    @apply text-sm font-medium text-white/85;
+  }
+
+  .spotify-review-summary p {
+    @apply mt-1 max-w-3xl text-[10px] leading-4 text-mist/50;
+  }
+
+  .spotify-review-summary progress {
+    @apply h-1.5 w-full max-w-sm overflow-hidden rounded-full accent-acid;
+  }
+
+  .spotify-counts {
+    @apply flex flex-wrap gap-x-4 gap-y-2 font-mono text-[9px] uppercase tracking-[0.06em] text-mist/45;
+  }
+
+  .spotify-counts strong {
+    @apply mr-1 tabular-nums text-acid/80;
+  }
+
+  .spotify-playlist-plan {
+    @apply grid gap-4 border-b border-line bg-white/[0.012] px-5 py-4 lg:grid-cols-[16rem_1fr];
+  }
+
+  .spotify-playlist-plan > div strong,
+  .spotify-playlist-plan > div small {
+    @apply block;
+  }
+
+  .spotify-playlist-plan > div strong {
+    @apply text-xs text-white/75;
+  }
+
+  .spotify-playlist-plan > div small {
+    @apply mt-1 text-[9px] leading-4 text-mist/40;
+  }
+
+  .spotify-playlist-plan ol {
+    @apply grid gap-1 sm:grid-cols-2 xl:grid-cols-3;
+  }
+
+  .spotify-playlist-plan li {
+    @apply flex justify-between gap-3 rounded-md border border-line bg-white/[0.015] px-2.5 py-2 text-[10px] text-white/65;
+  }
+
+  .spotify-playlist-plan li small {
+    @apply shrink-0 font-mono text-[8px] text-mist/35;
+  }
+
+  .spotify-track-review {
+    @apply max-h-[38rem] overflow-y-auto;
+  }
+
+  .spotify-track-match {
+    @apply border-b border-line/80;
+  }
+
+  .spotify-track-match summary {
+    @apply grid cursor-pointer list-none items-center gap-3 px-5 py-3 transition hover:bg-white/[0.018];
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+  }
+
+  .spotify-track-match summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .spotify-track-number {
+    @apply font-mono text-[9px] tabular-nums text-mist/30;
+  }
+
+  .spotify-track-source,
+  .spotify-track-source strong,
+  .spotify-track-source small {
+    @apply min-w-0;
+  }
+
+  .spotify-track-source strong,
+  .spotify-track-source small {
+    @apply block truncate;
+  }
+
+  .spotify-track-source strong {
+    @apply text-[11px] font-medium text-white/75;
+  }
+
+  .spotify-track-source small {
+    @apply mt-0.5 text-[9px] text-mist/40;
+  }
+
+  .spotify-match-state {
+    @apply rounded-md border border-line px-2 py-1 font-mono text-[8px] uppercase tracking-[0.06em] text-mist/45;
+  }
+
+  .spotify-match-state.selected {
+    @apply border-acid/20 text-acid/70;
+  }
+
+  .spotify-match-state.excluded {
+    @apply border-amber-100/15 text-amber-100/60;
+  }
+
+  .spotify-candidate-list {
+    @apply grid gap-2 border-t border-line/70 bg-black/10 px-5 py-3 lg:grid-cols-2;
+  }
+
+  .spotify-candidate {
+    @apply grid cursor-pointer items-center gap-3 rounded-lg border border-line bg-white/[0.012] px-3 py-2.5 transition hover:border-white/20;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .spotify-candidate.selected {
+    @apply border-acid/30 bg-acid/[0.045];
+  }
+
+  .spotify-candidate.exclude.selected {
+    @apply border-amber-100/25 bg-amber-100/[0.035];
+  }
+
+  .spotify-candidate input {
+    @apply accent-acid;
+  }
+
+  .spotify-candidate span,
+  .spotify-candidate strong,
+  .spotify-candidate small {
+    @apply min-w-0;
+  }
+
+  .spotify-candidate strong,
+  .spotify-candidate small {
+    @apply block truncate;
+  }
+
+  .spotify-candidate strong {
+    @apply text-[10px] font-medium text-white/70;
+  }
+
+  .spotify-candidate a {
+    @apply block truncate text-[10px] font-medium text-acid/75 underline decoration-acid/20 underline-offset-2;
+  }
+
+  .spotify-candidate small {
+    @apply mt-0.5 text-[8px] text-mist/35;
+  }
+
+  .spotify-candidate em {
+    @apply font-mono text-[8px] not-italic uppercase text-mist/40;
+  }
+
+  .spotify-no-candidates {
+    @apply rounded-lg border border-dashed border-line px-3 py-3 text-[9px] leading-4 text-mist/45;
+  }
+
+  .spotify-create-actions {
+    @apply flex flex-col justify-between gap-4 border-t border-line bg-white/[0.012] px-5 py-4 sm:flex-row sm:items-end;
+  }
+
+  .spotify-create-actions .control-field {
+    @apply w-full sm:w-52;
+  }
+
+  .spotify-create-actions > div {
+    @apply flex flex-col items-start gap-2 sm:items-end;
+  }
+
+  .spotify-create-actions p {
+    @apply text-[9px] text-mist/45;
+  }
+
+  .spotify-creating {
+    @apply px-5 py-8 text-center text-xs text-acid/70;
+  }
+
+  .spotify-final-review-heading {
+    @apply flex flex-col justify-between gap-3 border-b border-line bg-acid/[0.035] px-5 py-4 sm:flex-row sm:items-end;
+  }
+
+  .spotify-final-review-heading strong {
+    @apply text-sm font-medium text-white/90;
+  }
+
+  .spotify-final-review-heading p,
+  .spotify-final-review-heading small {
+    @apply mt-1 text-[9px] leading-4 text-mist/50;
+  }
+
+  .spotify-final-playlists {
+    @apply max-h-[46rem] overflow-y-auto;
+  }
+
+  .spotify-final-playlists > li {
+    @apply border-b border-line;
+  }
+
+  .spotify-final-playlists details > summary {
+    @apply flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-3 transition hover:bg-white/[0.018];
+  }
+
+  .spotify-final-playlists details > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .spotify-final-playlists details > summary strong,
+  .spotify-final-playlists details > summary small {
+    @apply block;
+  }
+
+  .spotify-final-playlists details > summary strong {
+    @apply text-[11px] text-white/80;
+  }
+
+  .spotify-final-playlists details > summary small,
+  .spotify-final-playlists details > summary > span:last-child {
+    @apply mt-0.5 font-mono text-[8px] text-mist/40;
+  }
+
+  .spotify-final-entries {
+    @apply border-t border-line/70 bg-black/10;
+  }
+
+  .spotify-final-entries > li {
+    @apply grid items-center gap-3 border-b border-line/60 px-5 py-2.5 last:border-b-0 md:grid-cols-[2.5rem_minmax(12rem,.8fr)_minmax(18rem,1.2fr)];
+  }
+
+  .spotify-final-entries > li.excluded {
+    @apply bg-amber-100/[0.018];
+  }
+
+  .spotify-final-position {
+    @apply font-mono text-[9px] tabular-nums text-mist/30;
+  }
+
+  .spotify-final-local strong,
+  .spotify-final-local small,
+  .spotify-final-match a,
+  .spotify-final-match span,
+  .spotify-final-match code {
+    @apply block truncate;
+  }
+
+  .spotify-final-local strong {
+    @apply text-[10px] font-medium text-white/70;
+  }
+
+  .spotify-final-local small {
+    @apply mt-0.5 text-[8px] text-mist/35;
+  }
+
+  .spotify-final-match a,
+  .spotify-final-match span {
+    @apply text-[9px] text-acid/65;
+  }
+
+  .spotify-final-match a {
+    @apply underline decoration-acid/20 underline-offset-2;
+  }
+
+  .spotify-final-match code {
+    @apply mt-0.5 font-mono text-[8px] text-mist/40;
+  }
+
+  .spotify-final-excluded {
+    @apply text-[9px] text-amber-100/60;
+  }
+
+  .spotify-final-actions {
+    @apply flex flex-col justify-between gap-4 bg-white/[0.012] px-5 py-4 sm:flex-row sm:items-center;
+  }
+
+  .spotify-final-actions > div {
+    @apply flex flex-col items-start gap-2 sm:items-end;
+  }
+
+  .spotify-final-actions p {
+    @apply text-[9px] text-amber-100/65;
+  }
+
+  .spotify-creation-report {
+    @apply px-5 py-5;
+  }
+
+  .spotify-creation-report > p {
+    @apply text-xs text-acid/70;
+  }
+
+  .spotify-creation-report > p.error {
+    @apply text-amber-100/70;
+  }
+
+  .spotify-creation-report ol {
+    @apply mt-4 grid gap-2;
+  }
+
+  .spotify-creation-report > ol > li {
+    @apply grid gap-2 rounded-lg border border-line bg-white/[0.012] px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto];
+  }
+
+  .spotify-creation-report > ol > li > div strong,
+  .spotify-creation-report > ol > li > div small {
+    @apply block;
+  }
+
+  .spotify-creation-report > ol > li > div strong {
+    @apply text-[11px] text-white/75;
+  }
+
+  .spotify-creation-report > ol > li > div small,
+  .spotify-creation-report > small {
+    @apply mt-1 text-[9px] leading-4 text-mist/45;
+  }
+
+  .spotify-creation-report > ol > li > a {
+    @apply text-[10px] text-acid/70 underline decoration-acid/20 underline-offset-2;
+  }
+
+  .spotify-creation-report > ol > li > p {
+    @apply text-[9px] leading-4 text-red-200/70 sm:col-span-2;
+  }
+
+  .spotify-failed-tracks {
+    @apply rounded-md border border-red-200/15 bg-red-200/[0.025] px-3 py-2 sm:col-span-2;
+  }
+
+  .spotify-failed-tracks > summary {
+    @apply cursor-pointer text-[9px] text-red-100/75;
+  }
+
+  .spotify-failed-tracks ul {
+    @apply mt-2 grid gap-1.5;
+  }
+
+  .spotify-failed-tracks li {
+    @apply rounded-md border border-line/70 bg-black/10 px-2.5 py-2;
+  }
+
+  .spotify-failed-tracks strong,
+  .spotify-failed-tracks code,
+  .spotify-failed-tracks span {
+    @apply block break-all;
+  }
+
+  .spotify-failed-tracks strong {
+    @apply text-[9px] font-medium text-white/65;
+  }
+
+  .spotify-failed-tracks code,
+  .spotify-failed-tracks span {
+    @apply mt-0.5 font-mono text-[8px] text-mist/40;
+  }
+
+  .spotify-workspace-error,
+  .spotify-workspace-warning {
+    @apply border-t border-line px-5 py-3 text-[10px] leading-4;
+  }
+
+  .spotify-workspace-error {
+    @apply text-red-200/75;
+  }
+
+  .spotify-workspace-warning {
+    @apply text-amber-100/60;
+  }
+}
+
+@media (hover: none) {
+  .track-position-slot.has-preview .track-position {
+    opacity: 0;
+  }
+
+  .track-position-slot.has-preview .track-preview-button {
+    opacity: 0.78;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track-preview-spinner {
+    animation-duration: 1.6s;
   }
 }
 

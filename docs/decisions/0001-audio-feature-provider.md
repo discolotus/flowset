@@ -19,7 +19,8 @@ The optimization core consumes a provider-neutral `AudioFeatures` model. Spotify
 responsible for identity, owned/collaborative playlist metadata, and eventual playlist export.
 Musical features enter through a separate provider adapter.
 
-The first milestone uses fictional, checked-in fixture data. Production work must choose one of:
+The first milestone began with fictional, checked-in fixture data. Production work must choose
+one of:
 
 1. Verify that the developer already has a qualifying legacy extended-quota Spotify app.
 2. Contract with a lawful music-analysis/catalog provider whose identifiers can be reconciled.
@@ -34,7 +35,12 @@ The first milestone uses fictional, checked-in fixture data. Production work mus
 - Spotify OAuth alone does not make the core PRD feasible.
 - Feature values should retain provenance, confidence, and provider version when persistence lands.
 
+ADR 0003 implements this boundary with explicit ReccoBeats and Essentia options. Demo fixtures
+remain available for UI development but are labeled as fixtures and never passed off as provider
+results.
+
 ## References
 
 - <https://developer.spotify.com/blog/2024-11-27-changes-to-the-web-api>
 - <https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide>
+- [ADR 0003: Make audio-feature providers explicit and selectable](0003-selectable-audio-feature-providers.md)
