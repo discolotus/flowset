@@ -4,6 +4,13 @@ An early full-stack foundation for **Sequence**, a web app that turns one or mor
 playlists into clearly defined output playlists using musical-feature distributions, nested
 groups, and scoped sorting—without modifying the originals.
 
+## Demo
+
+![Sequence demo showing fictional source selection, recipe editing, distribution analysis, and ordered playlist previews](docs/assets/sequence-demo.gif)
+
+The demo uses fictional fixture playlists. It changes the energy split from three to four basis
+playlists, then shows the destination choices and complete ordered-track preview.
+
 ## Core organization workflow
 
 Sequence treats playlist organization as a visible, composable pipeline:
