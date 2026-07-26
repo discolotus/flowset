@@ -4,6 +4,15 @@ An early full-stack foundation for **Sequence**, a web app that turns one or mor
 playlists into clearly defined output playlists using musical-feature distributions, nested
 groups, and scoped sorting—without modifying the originals.
 
+## How organization works
+
+![Top-down Sequence workflow showing twelve analyzed tracks split into low, medium, and high energy playlists, grouped into danceability sections, and sorted by BPM inside each section](docs/assets/playlist-organization-pipeline.png)
+
+This fictional example conserves all 12 tracks while making each operation visible: energy creates
+three separate basis playlists, danceability creates contiguous sections inside each playlist,
+and BPM sorting happens independently inside every section. The
+[editable draw.io source](docs/assets/playlist-organization-pipeline.drawio) is included.
+
 ## Demo
 
 ![Sequence demo showing fictional source selection, recipe editing, distribution analysis, and ordered playlist previews](docs/assets/sequence-demo.gif)
