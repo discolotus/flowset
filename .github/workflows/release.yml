@@ -1,0 +1,122 @@
+name: macOS preview release
+
+on:
+  push:
+    tags:
+      - "v*-preview.*"
+
+permissions:
+  contents: write
+
+jobs:
+  verify-package-release:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: dtolnay/rust-toolchain@1.94.0
+
+      - name: Verify runner architecture
+        run: test "$(uname -m)" = "arm64"
+
+      - name: Install release dependencies
+        run: |
+          brew install ffmpeg
+          npm ci
+          uv sync --project apps/api --locked
+
+      - name: Full verification
+        run: |
+          make test
+          make lint
+          make build
+          make test-mp3-export-smoke
+
+      - name: Package unsigned preview
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          RELEASE_VERSION=${RELEASE_VERSION#v}
+          ./scripts/package_macos_release.sh \
+            --version "$RELEASE_VERSION" \
+            --unsigned
+
+      - name: Generate Homebrew cask
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          RELEASE_VERSION=${RELEASE_VERSION#v}
+          ARTIFACT="dist/release/Playlist-Optimizer-${RELEASE_VERSION}-arm64.zip"
+          SHA256=$(shasum -a 256 "$ARTIFACT" | cut -d ' ' -f 1)
+          ./scripts/generate_homebrew_cask.sh \
+            --version "$RELEASE_VERSION" \
+            --sha256 "$SHA256" \
+            --output dist/release/playlist-optimizer.rb
+
+      - name: Write release notes
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          RELEASE_VERSION=${RELEASE_VERSION#v}
+          cat >dist/release/RELEASE_NOTES.md <<EOF
+          ## Playlist Optimizer ${RELEASE_VERSION}
+
+          This is an unsigned, Apple-silicon, non-commercial preview for macOS 15.2 or newer.
+          It is ad-hoc signed but not Apple-notarized. macOS will therefore require an explicit
+          **Open Anyway** approval in **System Settings → Privacy & Security** on first launch.
+
+          The packaged API contains Essentia under AGPLv3 for non-commercial applications, and
+          its bundled models carry CC BY-NC-ND 4.0 non-commercial terms. The repository's original
+          source is MIT licensed. Read \`THIRD_PARTY_NOTICES.md\` before use or redistribution.
+
+          Homebrew's FFmpeg formula is a runtime dependency. FFmpeg is not copied into the app.
+
+          Install after the tap has been updated:
+
+          \`\`\`bash
+          brew tap discolotus/tap
+          brew install --cask playlist-optimizer
+          \`\`\`
+
+          Verification performed by CI:
+
+          - web, API, and native test suites;
+          - lint and production web build;
+          - real FFmpeg/FFprobe MP3 export from MP3, FLAC, Opus, and DFF fixtures;
+          - strict recursive code-signature verification;
+          - bundle identifier, architecture, model count, and license payload checks.
+
+          This preview is not the future signed/notarized stable release. See
+          \`docs/macos-homebrew-release.md\` for the remaining Apple and licensing gates.
+          EOF
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: playlist-optimizer-${{ github.ref_name }}-arm64
+          path: |
+            dist/release/Playlist-Optimizer-*.zip
+            dist/release/Playlist-Optimizer-*.zip.sha256
+            dist/release/playlist-optimizer.rb
+            dist/release/RELEASE_NOTES.md
+          if-no-files-found: error
+
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/release/Playlist-Optimizer-*.zip \
+            dist/release/Playlist-Optimizer-*.zip.sha256 \
+            dist/release/playlist-optimizer.rb \
+            --prerelease \
+            --verify-tag \
+            --title "Playlist Optimizer ${GITHUB_REF_NAME#v} (unsigned preview)" \
+            --notes-file dist/release/RELEASE_NOTES.md

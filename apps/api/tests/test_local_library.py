@@ -94,6 +94,18 @@ def test_reads_real_dff_metadata_and_duration(tmp_path: Path) -> None:
     assert metadata.duration_ms == 250
 
 
+def test_recovers_artist_and_clean_title_from_numbered_untagged_filename(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "010 - Bailey Ibbs - Unsociable Hours [NSR003].dff"
+    source.write_bytes(_minimal_dff())
+
+    metadata = read_local_track_metadata(source)
+
+    assert metadata.name == "Unsociable Hours [NSR003]"
+    assert metadata.artist == "Bailey Ibbs"
+
+
 def test_imports_m3u_in_order_and_reports_unsafe_entries(tmp_path: Path) -> None:
     music_root = tmp_path / "music"
     album = music_root / "album"

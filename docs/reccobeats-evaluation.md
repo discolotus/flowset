@@ -4,7 +4,7 @@
 - Status: Initial diagnostic
 - Spotify playlist: `3pzh9J4RG8E0lJuOO4ClEH`
 - Playlist title: `Set June 26`
-- Playlist owner shown by Spotify: Tanner Leo
+- Playlist owner shown by Spotify: evaluation account
 - Playlist size shown by Spotify: 91 tracks
 
 ## Method

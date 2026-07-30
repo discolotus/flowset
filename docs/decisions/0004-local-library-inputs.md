@@ -99,7 +99,7 @@ displaying a misleading zero.
 
 ## Initial evidence
 
-The importer loaded all 13 tracks from `Minimalism Vol. 14` on External4TB in M3U order with
+The importer loaded all 13 tracks from an evaluation M3U on an external drive in M3U order with
 embedded title, artist, album, and duration metadata and no skipped entries. The Essentia endpoint
 then analyzed a three-track sample completely in 67.9 seconds. See the
 [evaluation](../essentia-evaluation.md).

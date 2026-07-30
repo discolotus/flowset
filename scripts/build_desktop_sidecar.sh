@@ -9,7 +9,8 @@ mkdir -p "$project_root/src-tauri/binaries"
 cd "$project_root/apps/api"
 UV_CACHE_DIR=.uv-cache uv sync --locked --extra essentia
 UV_CACHE_DIR=.uv-cache uv run --no-sync python scripts/download_essentia_models.py
-UV_CACHE_DIR=.uv-cache uv run --no-sync pyinstaller \
+PYINSTALLER_CONFIG_DIR="$project_root/apps/api/.pyinstaller" \
+  UV_CACHE_DIR=.uv-cache uv run --no-sync pyinstaller \
   --clean \
   --noconfirm \
   --onefile \

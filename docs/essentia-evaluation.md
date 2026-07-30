@@ -2,7 +2,7 @@
 
 - Date: 2026-07-16
 - Status: Initial local-library smoke test
-- Source: `Minimalism Vol. 14` M3U on External4TB
+- Source: a 13-track evaluation M3U on an external drive
 - Playlist entries imported: 13
 - Import skips: 0
 - Tracks analyzed in foreground sample: 3
@@ -10,11 +10,11 @@
 
 ## Method
 
-The API was configured with the External4TB music library as `ESSENTIA_AUDIO_ROOT`. The local
+The API was configured with the external music library as `ESSENTIA_AUDIO_ROOT`. The local
 import endpoint read this root-relative M3U:
 
 ```text
-toolcrate-downloads/July/VA-Minimalism_Vol._14-(VMCOMP1128)-WEB-2023-COS/
+evaluation-library/album-folder/
   00-va-minimalism_vol._14-(vmcomp1128)-web-2023.m3u
 ```
 

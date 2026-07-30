@@ -1,4 +1,4 @@
-.PHONY: setup setup-essentia setup-essentia-models dev test test-native test-mp3-export-smoke lint build desktop-sidecar desktop-build
+.PHONY: setup setup-essentia setup-essentia-models dev test test-native test-mp3-export-smoke lint build desktop-sidecar desktop-build release-preview
 
 setup:
 	npm install
@@ -26,8 +26,7 @@ test-mp3-export-smoke:
 	npm run build --workspace @playlist-optimizer/web
 	./scripts/prepare_native_test.sh
 	cargo test --manifest-path src-tauri/Cargo.toml --lib --locked \
-		mp3_export::tests::smoke_transcodes_real_flac_opus_and_dff_to_max_quality_mp3 \
-		-- --ignored --exact --nocapture
+		mp3_export::tests::smoke_ -- --ignored --nocapture
 
 lint:
 	npm run lint
@@ -40,3 +39,7 @@ desktop-sidecar:
 
 desktop-build:
 	npm run desktop:build
+
+release-preview:
+	@test -n "$(VERSION)" || (echo "usage: make release-preview VERSION=0.1.0-preview.1" >&2; exit 2)
+	./scripts/package_macos_release.sh --version "$(VERSION)" --unsigned
