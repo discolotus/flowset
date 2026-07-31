@@ -77,7 +77,7 @@ describe("Rekordbox XML export", () => {
 
   it("escapes XML metadata and emits percent-encoded absolute Unicode file URLs", () => {
     const special = makeTrack("special", 'A&B <Night> "Mix"', {
-      artist: "Tanner's > Set",
+      artist: "DJ Example's > Set",
       album: "A&B",
     });
     const result = buildRekordboxXml({
@@ -88,7 +88,7 @@ describe("Rekordbox XML export", () => {
     });
 
     expect(result.contents).toContain('Name="A&amp;B &lt;Night&gt; &quot;Mix&quot;"');
-    expect(result.contents).toContain('Artist="Tanner&apos;s &gt; Set"');
+    expect(result.contents).toContain('Artist="DJ Example&apos;s &gt; Set"');
     expect(result.contents).toContain('Name="Low &amp; &quot;Bright&quot;"');
     expect(result.contents).toContain(
       'Location="file://localhost/Volumes/M%C3%BAsica/Beyonc%C3%A9%20%26%20Friends/%C3%89t%C3%A9%20%231.flac"',

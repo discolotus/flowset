@@ -37,8 +37,12 @@ separate from Apple Music import, DJ-bundle export, and M3U8 export.
 
 ### Copy and transcode policy
 
-- A source whose extension is `.mp3`, compared case-insensitively, is copied byte-for-byte. It is
-  not decoded and re-encoded.
+- A source whose extension is `.mp3`, compared case-insensitively, has its encoded audio
+  stream-copied without decoding or re-encoding. Its exported container is new so Sequence can
+  write canonical title, artist, album, and playlist-position tags from the inspected preview.
+- Supported inputs with absent embedded title/artist tags use a conservative filename fallback:
+  an optional numeric prefix is removed and `Artist - Title` is split once. Export never puts the
+  numbered delivery filename into the ID3 title field.
 - Supported non-MP3 sources are converted with FFmpeg/libmp3lame using a 320 kbps CBR target and
   LAME algorithm quality `0`, its highest and slowest analysis mode. Standard MP3 permits 320 kbps
   for MPEG-1 sample rates; lower-rate inputs use their highest legal tier, so output is up to
@@ -54,9 +58,9 @@ separate from Apple Music import, DJ-bundle export, and M3U8 export.
   accepting any executable that merely reports an FFmpeg version. FFmpeg receives no interactive
   input, treats decode errors as fatal, and may write only the new destination selected for this
   export.
-- Each transcode first writes a temporary file in its destination folder and becomes the final
-  numbered MP3 only after successful completion. A failed temporary file is not presented as a
-  playable result.
+- Each stream copy or transcode first writes a temporary file in its destination folder and becomes
+  the final numbered MP3 only after successful completion. A failed temporary file is not presented
+  as a playable result.
 
 ### Validation, progress, and reporting
 
@@ -80,19 +84,20 @@ separate from Apple Music import, DJ-bundle export, and M3U8 export.
 
 - The current local build resolves an explicitly configured or app-resource `ffmpeg` first, then
   checks the common Apple Silicon and Intel Homebrew locations and finally the launch environment.
-  Existing MP3-only exports do not invoke it. If transcoding is required and no working executable
-  is available, preflight stops before creating an export root and explains how to configure it.
-- This is sufficient for the configured development Mac, but the built `.app` is not yet a
-  self-contained transcoding package.
+  Existing MP3 exports also invoke FFmpeg to normalize their containers and tags without
+  re-encoding audio. If no working executable is available, preflight stops before creating an
+  export root and explains how to configure it.
+- The unsigned Homebrew preview declares Homebrew FFmpeg as a formula dependency, but the built
+  `.app` is not a self-contained transcoding package.
 
 ## Release follow-ups
 
-- Bundle a pinned, architecture-appropriate FFmpeg executable as a Tauri resource and resolve that
-  resource directly. A release must not assume Homebrew, `/usr/local`, or a shell `PATH` exists.
-  If it is dynamically linked, bundle and repair the complete library dependency closure rather
-  than copying the executable alone. Include every shipped binary in signing and notarization,
-  record reproducible checksums, and audit codec configuration, upstream notices, and LGPL/GPL or
-  other applicable obligations.
+- Before a notarized, self-contained release, select a pinned architecture-appropriate FFmpeg
+  executable and resolve it directly rather than assuming a shell `PATH`. If it is dynamically
+  linked, bundle and repair the complete library dependency closure rather than copying the
+  executable alone. Include every shipped binary in signing and notarization, record reproducible
+  checksums, and audit codec configuration, upstream notices, and LGPL/GPL or other applicable
+  obligations.
 - Extend the existing copy/transcode counts and transcode-size estimate into a complete total-size
   preflight by reading copied-MP3 sizes, counting unknown sizes or durations, and warning when
   destination free space appears insufficient.
@@ -103,8 +108,9 @@ separate from Apple Music import, DJ-bundle export, and M3U8 export.
 
 - Playlist and track order survives copying through ordinary filename sorting, even in tools that
   ignore M3U8 order.
-- Existing MP3 audio keeps its exact encoded bytes and quality. Other formats gain a consistent,
-  broadly compatible MP3 representation at the highest legal tier up to 320 kbps.
+- Existing MP3 audio keeps its encoded frames and quality while its exported ID3 metadata is
+  normalized. Other formats gain a consistent, broadly compatible MP3 representation at the
+  highest legal tier up to 320 kbps.
 - Lossless-to-MP3 conversion is intentionally lossy. Lossy-to-MP3 conversion can add generation
   loss and cannot recover information absent from the source; users who prioritize fidelity should
   retain the DJ bundle or M3U8 workflow against original files.

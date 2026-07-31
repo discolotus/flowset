@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted for local macOS testing; public distribution is not yet approved.
+Accepted for local macOS testing and an explicitly unsigned, non-commercial Homebrew preview.
+Signed/notarized production distribution is not yet approved.
 
 ## Context
 
@@ -37,9 +38,10 @@ the desktop shell.
   them as Tauri resources, validate them at launch, and pass their resolved resource path to the
   sidecar as `ESSENTIA_MODEL_DIR`.
 - For development, allow the opt-in portable-MP3 exporter to use an explicitly configured FFmpeg
-  executable or local environment resolution. Before public distribution, bundle a pinned,
-  architecture-appropriate FFmpeg executable as a signed Tauri resource and resolve it directly;
-  do not assume Homebrew or a shell `PATH` is available on another Mac.
+  executable or local environment resolution. The unsigned Homebrew preview declares Homebrew
+  FFmpeg as an explicit formula dependency. Before a notarized, self-contained distribution,
+  select a pinned architecture-appropriate FFmpeg build, record its source/configuration/checksum
+  and license obligations, sign it, and resolve it directly.
 - Run TensorFlow mood inference in one fresh child process per track. Permit one model worker at a
   time, terminate it after its result, and enforce a configurable timeout. Native Essentia values
   remain usable if the child crashes, hangs, or returns an invalid result.
@@ -59,10 +61,13 @@ the desktop shell.
   runtime already frozen into the Python sidecar.
 - The bundled Essentia/TensorFlow native libraries require macOS 15.2 or newer, so the package
   declares that actual minimum rather than promising compatibility its binaries cannot provide.
-- The current `.app` is suitable for local testing but is not release-ready. Direct distribution
-  requires code signing and notarization, and the bundled FFTW library's SDK metadata must be
-  reconciled with hardened-runtime requirements. The selected FFmpeg build and codec configuration
-  also require reproducible checksums, attribution, and a license/signing/notarization audit.
+- The current `.app` is suitable for local testing and an explicitly unsigned, non-commercial
+  preview, not a production release. Normal direct distribution requires Developer ID signing and
+  notarization, and the bundled FFTW library's SDK metadata must be reconciled with
+  hardened-runtime requirements. The selected FFmpeg build and codec configuration also require
+  reproducible checksums, attribution, and a license/signing/notarization audit.
+- The packaged preview must include the repository MIT license, Essentia's AGPLv3 text, and the
+  model-license notice. Its release and cask must identify the non-commercial and unsigned limits.
 - A fixed loopback port is simple for the first desktop slice but should become a dynamically
   allocated authenticated channel before multi-instance support.
 - Spotify Authorization Code with PKCE needs only the public client ID; no Spotify client secret

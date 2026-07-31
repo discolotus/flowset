@@ -158,7 +158,7 @@ export function BatchDestinationPanel({
           <span className="export-destination-kicker">Portable audio folders</span>
           <h4>MP3 collection</h4>
           <p>
-            Make numbered playlist folders and numbered tracks, each with a relative M3U8. Existing MP3s are copied byte-for-byte. FLAC, Opus, and other supported audio are converted at up to 320 kbps using LAME&apos;s highest-quality algorithm mode.
+            Make numbered playlist folders and numbered tracks, each with a relative M3U8. Every exported MP3 gets clean title, artist, and album tags. Existing MP3 audio is copied without re-encoding; FLAC, Opus, and other supported audio are converted at up to 320 kbps using LAME&apos;s highest-quality algorithm mode.
           </p>
           <button
             type="button"
@@ -172,8 +172,8 @@ export function BatchDestinationPanel({
           {nativeApp && mp3ExportState.status === "idle" && (
             <small>
               {mp3Estimate.transcodeCount > 0
-                ? `About ${formatBytes(mp3Estimate.estimatedTranscodeBytes)} for ${mp3Estimate.transcodeCount} transcoded track${mp3Estimate.transcodeCount === 1 ? "" : "s"}; ${mp3Estimate.copiedMp3Count} MP3${mp3Estimate.copiedMp3Count === 1 ? " keeps" : "s keep"} the original file size. `
-                : `${mp3Estimate.copiedMp3Count} MP3${mp3Estimate.copiedMp3Count === 1 ? " will be" : "s will be"} copied at their current file sizes. `}
+                ? `About ${formatBytes(mp3Estimate.estimatedTranscodeBytes)} for ${mp3Estimate.transcodeCount} transcoded track${mp3Estimate.transcodeCount === 1 ? "" : "s"}; ${mp3Estimate.copiedMp3Count} MP3${mp3Estimate.copiedMp3Count === 1 ? " keeps" : "s keep"} the original encoded audio. `
+                : `${mp3Estimate.copiedMp3Count} MP3${mp3Estimate.copiedMp3Count === 1 ? " will be" : "s will be"} retagged without re-encoding. `}
               Lossy-to-lossy conversion cannot restore source detail and may add generation loss.
             </small>
           )}

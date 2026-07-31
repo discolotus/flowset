@@ -1,7 +1,7 @@
 # Product Requirements Document: Spotify Playlist Optimizer
 
 - Version: 0.2
-- Author: Tanner (Concept)
+- Author: Disco Lotus (Concept)
 - Status: Draft
 
 ## Vision
@@ -345,16 +345,17 @@ Outputs support five initial delivery targets:
   retained as M3U8 metadata, and no source audio is copied, moved, or modified.
 - **Portable MP3 folders:** the app creates one new export root containing zero-padded, numbered
   playlist folders in recipe-output order. Each folder contains zero-padded, numbered MP3 files in
-  canonical preview order. Existing MP3 sources are copied byte-for-byte; other supported local
-  formats, including FLAC, Opus, and DFF/DSDIFF, are converted with the highest-quality LAME
-  algorithm mode and a target of 320 kbps.
+  canonical preview order. Every exported file receives explicit title, artist, album, and
+  playlist-position tags from the preview. Existing MP3 audio is stream-copied without re-encoding;
+  other supported local formats, including FLAC, Opus, and DFF/DSDIFF, are converted with the
+  highest-quality LAME algorithm mode and a target of 320 kbps.
   The output uses the highest legal standard MP3 bitrate for the source sample-rate tier, up to
   320 kbps. Repeated entries remain repeated files. Source audio is never moved, renamed, replaced,
   retagged, or deleted.
 
 At the 320 kbps ceiling, converted audio is approximately 2.4 MB per minute before metadata and
 filesystem overhead. The app estimates this conservative upper bound and separately counts
-byte-copied MP3s, whose existing sizes are not yet included in the estimate. A complete
+stream-copied MP3s, whose existing sizes are not yet included in the estimate. A complete
 total/free-space preflight remains release hardening. The interface states that transcoding is
 lossy, that a high output bitrate cannot restore missing source detail, and that converting an
 already-lossy format may add generation loss.

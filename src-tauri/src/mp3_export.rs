@@ -25,6 +25,7 @@ pub(crate) struct Mp3ExportTrackRequest {
     source_path: String,
     title: String,
     artist: String,
+    album: String,
     group_label: String,
 }
 
@@ -160,7 +161,7 @@ where
                 .filter(|path| ffmpeg_supports_high_quality_mp3(path))
                 .or_else(resolve_ffmpeg)
                 .ok_or_else(|| {
-                    "FFmpeg with the libmp3lame encoder is required to convert non-MP3 tracks at maximum MP3 quality. Install a compatible FFmpeg build or configure SEQUENCE_FFMPEG_PATH, then try again. Existing MP3 files are never re-encoded."
+                    "FFmpeg with the libmp3lame encoder is required to normalize MP3 tags and convert non-MP3 tracks at maximum MP3 quality. Install a compatible FFmpeg build or configure SEQUENCE_FFMPEG_PATH, then try again. Existing MP3 audio is stream-copied without re-encoding."
                         .to_owned()
                 })?,
         )
@@ -224,13 +225,19 @@ where
 
             let destination = playlist_directory.join(&track.output_filename);
             let outcome = if track.action == "copy" {
-                copy_mp3_atomically(&track.source, &destination)
-                    .map(|bytes| ("copied", bytes, None))
+                copy_mp3_atomically(
+                    ffmpeg.as_ref().expect("FFmpeg was preflighted"),
+                    &track.source,
+                    &destination,
+                    &track.request,
+                )
+                .map(|(bytes, warning)| ("copied", bytes, warning))
             } else {
                 transcode_mp3_atomically(
                     ffmpeg.as_ref().expect("FFmpeg was preflighted"),
                     &track.source,
                     &destination,
+                    &track.request,
                 )
                 .map(|(bytes, warning)| ("transcoded", bytes, warning))
             };
@@ -442,10 +449,9 @@ fn prepare_export(
     Ok(PreparedExport {
         parent,
         root_name: fit_utf8(&format!("{clean_export_name} — MP3"), MAX_COMPONENT_BYTES),
-        needs_ffmpeg: prepared_playlists
-            .iter()
-            .flat_map(|playlist| &playlist.tracks)
-            .any(|track| track.action == "transcode"),
+        // MP3 inputs are stream-copied through FFmpeg so every exported file receives
+        // canonical title/artist/album tags without re-encoding its audio.
+        needs_ffmpeg: true,
         playlists: prepared_playlists,
         total_tracks,
     })
@@ -540,44 +546,41 @@ fn partial_path(destination: &Path) -> PathBuf {
     destination.with_file_name(format!(".{stem}.partial.mp3"))
 }
 
-fn copy_mp3_atomically(source: &Path, destination: &Path) -> Result<u64, String> {
-    let partial = partial_path(destination);
-    let result = (|| {
-        let mut input = fs::File::open(source)
-            .map_err(|error| format!("Could not read the source MP3: {error}"))?;
-        let mut output = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&partial)
-            .map_err(|error| format!("Could not create a temporary MP3 file: {error}"))?;
-        let bytes = io::copy(&mut input, &mut output)
-            .map_err(|error| format!("Could not copy the source MP3: {error}"))?;
-        output
-            .sync_all()
-            .map_err(|error| format!("Could not finish the copied MP3: {error}"))?;
-        fs::rename(&partial, destination)
-            .map_err(|error| format!("Could not publish the copied MP3: {error}"))?;
-        Ok::<u64, String>(bytes)
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&partial);
-    }
-    result
+fn copy_mp3_atomically(
+    ffmpeg: &Path,
+    source: &Path,
+    destination: &Path,
+    metadata: &Mp3ExportTrackRequest,
+) -> Result<(u64, Option<String>), String> {
+    write_mp3_atomically(ffmpeg, source, destination, metadata, true)
 }
 
 fn transcode_mp3_atomically(
     ffmpeg: &Path,
     source: &Path,
     destination: &Path,
+    metadata: &Mp3ExportTrackRequest,
+) -> Result<(u64, Option<String>), String> {
+    write_mp3_atomically(ffmpeg, source, destination, metadata, false)
+}
+
+fn write_mp3_atomically(
+    ffmpeg: &Path,
+    source: &Path,
+    destination: &Path,
+    metadata: &Mp3ExportTrackRequest,
+    stream_copy_audio: bool,
 ) -> Result<(u64, Option<String>), String> {
     let partial = partial_path(destination);
     let _ = fs::remove_file(&partial);
-    let first = run_ffmpeg(ffmpeg, source, &partial, true);
+    let first = run_ffmpeg(ffmpeg, source, &partial, metadata, true, stream_copy_audio);
     let warning = match first {
         Ok(()) => None,
         Err(_) => {
             let _ = fs::remove_file(&partial);
-            if let Err(error) = run_ffmpeg(ffmpeg, source, &partial, false) {
+            if let Err(error) =
+                run_ffmpeg(ffmpeg, source, &partial, metadata, false, stream_copy_audio)
+            {
                 let _ = fs::remove_file(&partial);
                 return Err(error);
             }
@@ -605,7 +608,9 @@ fn run_ffmpeg(
     ffmpeg: &Path,
     source: &Path,
     destination: &Path,
+    metadata: &Mp3ExportTrackRequest,
     include_artwork: bool,
+    stream_copy_audio: bool,
 ) -> Result<(), String> {
     let mut command = Command::new(ffmpeg);
     command.args([
@@ -638,13 +643,29 @@ fn run_ffmpeg(
     } else {
         command.arg("-vn");
     }
+    if stream_copy_audio {
+        command.args(["-c:a", "copy"]);
+    } else {
+        command.args([
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            "320k",
+            "-compression_level:a",
+            "0",
+        ]);
+    }
+    for (name, value) in [
+        ("title", metadata.title.as_str()),
+        ("artist", metadata.artist.as_str()),
+        ("album", metadata.album.as_str()),
+    ] {
+        command.arg("-metadata");
+        command.arg(format!("{name}={value}"));
+    }
     command.args([
-        "-c:a",
-        "libmp3lame",
-        "-b:a",
-        "320k",
-        "-compression_level:a",
-        "0",
+        "-metadata",
+        &format!("track={}", metadata.playlist_position),
         "-id3v2_version",
         "3",
         "-f",
@@ -871,6 +892,7 @@ mod tests {
             source_path: display_path(source),
             title: title.to_owned(),
             artist: "Test Artist".to_owned(),
+            album: "Test Album".to_owned(),
             group_label: if position < 3 { "Opening" } else { "Closing" }.to_owned(),
         }
     }
@@ -965,6 +987,38 @@ mod tests {
         );
     }
 
+    fn generate_tagless_audio_fixture(
+        ffmpeg: &Path,
+        destination: &Path,
+        codec: &str,
+        frequency: usize,
+    ) {
+        let source = format!("sine=frequency={frequency}:sample_rate=48000:duration=1");
+        let output = Command::new(ffmpeg)
+            .args([
+                "-nostdin",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                &source,
+                "-map_metadata",
+                "-1",
+                "-c:a",
+                codec,
+            ])
+            .arg(destination)
+            .output()
+            .expect("start tagless fixture FFmpeg");
+        assert!(
+            output.status.success(),
+            "could not create tagless {codec} fixture: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
     fn append_dff_chunk(destination: &mut Vec<u8>, id: &[u8; 4], data: &[u8]) {
         destination.extend_from_slice(id);
         destination.extend_from_slice(&(data.len() as u64).to_be_bytes());
@@ -1045,6 +1099,23 @@ mod tests {
             .map(str::to_owned)
     }
 
+    fn audio_stream_hash(ffmpeg: &Path, path: &Path) -> Vec<u8> {
+        let output = Command::new(ffmpeg)
+            .args(["-nostdin", "-v", "error", "-i"])
+            .arg(path)
+            .args([
+                "-map", "0:a:0", "-c:a", "copy", "-f", "hash", "-hash", "sha256", "-",
+            ])
+            .output()
+            .expect("hash encoded audio stream");
+        assert!(
+            output.status.success(),
+            "could not hash encoded audio stream: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        output.stdout
+    }
+
     #[test]
     #[cfg(unix)]
     fn exports_numbered_folders_and_tracks_in_order() {
@@ -1084,7 +1155,7 @@ mod tests {
         let playlist_directory = root.join("01 - Low-Arousal");
         assert_eq!(
             fs::read(playlist_directory.join("001 - Test Artist - First.mp3")).unwrap(),
-            b"original-mp3-bytes"
+            b"transcoded-audio"
         );
         assert_eq!(
             fs::read(playlist_directory.join("002 - Test Artist - Second.mp3")).unwrap(),
@@ -1103,7 +1174,7 @@ mod tests {
         assert_eq!(
             fs::read(second_playlist_directory.join("001 - Test Artist - First again.mp3"))
                 .unwrap(),
-            b"original-mp3-bytes"
+            b"transcoded-audio"
         );
         assert!(second_playlist_directory.join("playlist.m3u8").is_file());
         assert_eq!(report.copied_count, 2);
@@ -1187,11 +1258,12 @@ mod tests {
             .unwrap()
             .set_len(corrupt_length / 2)
             .unwrap();
-        fs::write(&existing_mp3, b"existing-mp3-bytes").unwrap();
+        generate_audio_fixture(&ffmpeg, &existing_mp3, "libmp3lame", "Original MP3", 990);
         let flac_before = fs::read(&flac).unwrap();
         let opus_before = fs::read(&opus).unwrap();
         let dff_before = fs::read(&dff).unwrap();
         let corrupt_before = fs::read(&corrupt).unwrap();
+        let existing_mp3_before = fs::read(&existing_mp3).unwrap();
 
         let report = export_playlists_as_mp3_core(
             destination.to_str().unwrap(),
@@ -1231,32 +1303,34 @@ mod tests {
         assert!(dff_mp3.is_file());
         assert!(!corrupt_mp3.exists());
         assert!(!partial_path(&corrupt_mp3).exists());
-        assert_eq!(fs::read(&after_mp3).unwrap(), b"existing-mp3-bytes");
         assert_eq!(fs::read(&flac).unwrap(), flac_before);
         assert_eq!(fs::read(&opus).unwrap(), opus_before);
         assert_eq!(fs::read(&dff).unwrap(), dff_before);
         assert_eq!(fs::read(&corrupt).unwrap(), corrupt_before);
+        assert_eq!(fs::read(&existing_mp3).unwrap(), existing_mp3_before);
+        assert_eq!(
+            audio_stream_hash(&ffmpeg, &existing_mp3),
+            audio_stream_hash(&ffmpeg, &after_mp3)
+        );
         assert_eq!(report.playlists[3].tracks[0].action, "transcode");
         assert_eq!(report.playlists[3].tracks[0].status, "failed");
         assert_eq!(report.playlists[3].tracks[1].action, "copy");
         assert_eq!(report.playlists[3].tracks[1].status, "copied");
 
-        for (path, expected_title) in [
-            (&flac_mp3, Some("FLAC Fixture")),
-            (&opus_mp3, Some("Opus Fixture")),
-            (&dff_mp3, None),
+        for (path, expected_title, expected_bitrate) in [
+            (&flac_mp3, "FLAC Source", Some("320000")),
+            (&opus_mp3, "Opus Source", Some("320000")),
+            (&dff_mp3, "DFF Source", Some("320000")),
+            (&after_mp3, "After Corrupt Source", None),
         ] {
             let probe = probe_audio(&ffprobe, path);
             assert_eq!(probe["streams"][0]["codec_name"], "mp3");
-            assert_eq!(probe["streams"][0]["bit_rate"], "320000");
-            if let Some(expected_title) = expected_title {
-                assert_eq!(probe_tag(&probe, "title").as_deref(), Some(expected_title));
-                assert_eq!(
-                    probe_tag(&probe, "artist").as_deref(),
-                    Some("Fixture Artist")
-                );
-                assert_eq!(probe_tag(&probe, "album").as_deref(), Some("Fixture Album"));
+            if let Some(expected_bitrate) = expected_bitrate {
+                assert_eq!(probe["streams"][0]["bit_rate"], expected_bitrate);
             }
+            assert_eq!(probe_tag(&probe, "title").as_deref(), Some(expected_title));
+            assert_eq!(probe_tag(&probe, "artist").as_deref(), Some("Test Artist"));
+            assert_eq!(probe_tag(&probe, "album").as_deref(), Some("Test Album"));
             let decode = Command::new(&ffmpeg)
                 .args(["-nostdin", "-v", "error", "-i"])
                 .arg(path)
@@ -1271,6 +1345,56 @@ mod tests {
         }
         assert!(Path::new(&report.manifest_path).is_file());
         assert!(Path::new(&report.report_path).is_file());
+
+        fs::remove_dir_all(sandbox).unwrap();
+    }
+
+    #[test]
+    #[ignore = "requires local FFmpeg and FFprobe; run with make test-mp3-export-smoke"]
+    fn smoke_writes_request_metadata_for_tagless_mp3_and_flac() {
+        let ffmpeg = resolve_ffmpeg().expect("the real MP3 smoke test requires libmp3lame");
+        let ffprobe = real_ffprobe(&ffmpeg);
+        let sandbox = unique_test_directory("normalized-metadata");
+        let library = sandbox.join("library");
+        let destination = sandbox.join("destination");
+        fs::create_dir_all(&library).unwrap();
+        fs::create_dir_all(&destination).unwrap();
+        let mp3 = library.join("010 - Bailey Ibbs - Unsociable Hours [NSR003].mp3");
+        let flac = library.join("011 - Bailey Ibbs - Make Me Feel [NSR003].flac");
+        generate_tagless_audio_fixture(&ffmpeg, &mp3, "libmp3lame", 440);
+        generate_tagless_audio_fixture(&ffmpeg, &flac, "flac", 880);
+
+        let mut mp3_track = track(1, &mp3, "Unsociable Hours [NSR003]");
+        mp3_track.artist = "Bailey Ibbs".to_owned();
+        let mut flac_track = track(2, &flac, "Make Me Feel [NSR003]");
+        flac_track.artist = "Bailey Ibbs".to_owned();
+        let report = export_playlists_as_mp3_core(
+            destination.to_str().unwrap(),
+            "normalized-metadata",
+            "Normalized metadata",
+            library.to_str().unwrap(),
+            vec![playlist(vec![mp3_track, flac_track])],
+            Some(ffmpeg.clone()),
+            &|_| {},
+        )
+        .unwrap();
+
+        let root = PathBuf::from(&report.directory).join("01 - Low-Arousal");
+        for (filename, expected_title) in [
+            (
+                "001 - Bailey Ibbs - Unsociable Hours [NSR003].mp3",
+                "Unsociable Hours [NSR003]",
+            ),
+            (
+                "002 - Bailey Ibbs - Make Me Feel [NSR003].mp3",
+                "Make Me Feel [NSR003]",
+            ),
+        ] {
+            let probe = probe_audio(&ffprobe, &root.join(filename));
+            assert_eq!(probe_tag(&probe, "title").as_deref(), Some(expected_title));
+            assert_eq!(probe_tag(&probe, "artist").as_deref(), Some("Bailey Ibbs"));
+            assert_eq!(probe_tag(&probe, "album").as_deref(), Some("Test Album"));
+        }
 
         fs::remove_dir_all(sandbox).unwrap();
     }

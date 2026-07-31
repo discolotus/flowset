@@ -65,8 +65,8 @@ defines these operation boundaries as product invariants.
 - Spotify PKCE connection, reviewed local-to-catalog matching, and create-new playlist delivery
   that is private by default with an explicit public option
 - Portable DJ bundles containing ordered M3U8 playlists, Rekordbox XML, and compatibility reports
-- Portable MP3-folder export with recipe-ordered folders, track-ordered filenames, exact MP3
-  copies, and high-quality conversion of other local formats
+- Portable MP3-folder export with recipe-ordered folders, track-ordered filenames, normalized
+  metadata without MP3 audio re-encoding, and high-quality conversion of other local formats
 - Deterministic equal-width binning, scoped sorting, Camelot key ordering, and missing-data retention
 - Camelot key conversion, constraint reporting, explicit-track filtering, and demo fixtures
 - Unit tests for the API, strategies, frontend helpers, and native export safety boundaries
@@ -144,18 +144,35 @@ open "src-tauri/target/release/bundle/macos/Playlist Optimizer.app"
 model/metadata artifacts, and bundles them under the app's Resources directory. The installed app
 configures the model path automatically and performs no model download at startup or analysis time.
 
-The portable MP3 exporter invokes FFmpeg only when a source is not already an MP3; existing MP3s
-do not need FFmpeg. The current build checks `SEQUENCE_FFMPEG_PATH`, an app-resource location,
-the Apple Silicon and Intel Homebrew locations, and finally the app's `PATH`. It therefore works
-on this configured development Mac even when Finder does not inherit Homebrew's path, but the
-packaged `.app` is not yet self-contained for transcoding. A distributable app must bundle a
-pinned, architecture-appropriate FFmpeg executable in its signed Resources directory. That
-build's codecs and license obligations also require a release audit.
+The portable MP3 exporter invokes FFmpeg for both stream-copying existing MP3 audio into a freshly
+tagged container and converting supported non-MP3 sources. The current build checks
+`SEQUENCE_FFMPEG_PATH`, an app-resource location, the Apple Silicon and Intel Homebrew locations,
+and finally the app's `PATH`. The Homebrew preview declares `ffmpeg` as a formula dependency, but
+the `.app` is not self-contained. A future notarized release must select a pinned,
+architecture-appropriate FFmpeg distribution and complete its source, checksum, codec-license,
+signing, and notarization audit.
 
-The resulting app bundle is unsigned and intended for local testing. Distributing it to other
-Macs requires an Apple Developer signing identity and notarization. The Essentia TensorFlow wheel
-also includes an FFTW library whose SDK metadata triggers a PyInstaller hardened-runtime warning;
-that must be resolved before calling the bundle release-ready.
+### Install the unsigned Homebrew preview
+
+The current Apple-silicon package is an explicitly unsigned, non-commercial preview for macOS 15.2
+or newer. It is ad-hoc signed for internal bundle integrity but is not signed by an Apple Developer
+ID or notarized. After the first preview release is published:
+
+```bash
+brew tap discolotus/tap
+brew install --cask playlist-optimizer
+```
+
+On first launch, macOS will block the app because Apple Developer Program credentials are not yet
+available. Open **System Settings → Privacy & Security**, confirm that the blocked app is Playlist
+Optimizer, and choose **Open Anyway** only after reviewing the public source, release checksum, and
+[third-party notices](THIRD_PARTY_NOTICES.md) before opening it. Essentia and the bundled model
+files add non-commercial terms to the packaged preview even though this repository's original
+source is MIT licensed.
+
+The full [macOS and Homebrew release protocol](docs/macos-homebrew-release.md) documents the CI
+checks, clean-install test, tap update, and the remaining Developer ID, hardened-runtime,
+notarization, FFmpeg, and commercial-license gates.
 
 The first Apple Music import requests macOS Automation access. Sequence always validates the
 complete batch first, creates a uniquely named Music folder, never deletes or replaces an existing
@@ -219,7 +236,7 @@ BPM, key, danceability, loudness, and spectral descriptors if the model worker f
 boundary prevents Essentia's graph lifecycle state from surviving into the next track. ReccoBeats
 is unaffected.
 
-The initial External4TB smoke test imported a 13-track M3U without skips and analyzed three full
+The initial external-library smoke test imported a 13-track M3U without skips and analyzed three full
 tracks in 67.9 seconds. See the [Essentia evaluation](docs/essentia-evaluation.md).
 
 ## Local folders and playlist files
@@ -315,10 +332,11 @@ The desktop app offers four deliberate delivery paths after preview:
 4. **Portable MP3 folders:** create one new export root whose playlist folders are numbered in
    recipe-output order. Inside each folder, MP3 filenames are numbered in canonical preview order,
    so Finder, Rekordbox, djay Pro, and other filename-sorted tools see the intended sequence.
-   Existing MP3 sources are copied byte-for-byte; supported non-MP3 audio is converted with LAME's
-   highest-quality algorithm mode and a 320 kbps target. Standard MP3 limits lower-rate inputs to a
-   lower legal maximum, so the result is **up to** 320 kbps. Source files are never moved, renamed,
-   replaced, retagged, or edited.
+   Every output receives explicit title, artist, album, and playlist-position tags from the
+   inspected preview. Existing MP3 audio frames are stream-copied without re-encoding; supported
+   non-MP3 audio is converted with LAME's highest-quality algorithm mode and a 320 kbps target.
+   Standard MP3 limits lower-rate inputs to a lower legal maximum, so the result is **up to**
+   320 kbps. Source files are never moved, renamed, replaced, retagged, or edited.
 
 The import-and-MP3-export path accepts AAC/ADTS, AC-3/E-AC-3, AIFF/AIFC, Monkey's Audio,
 DFF/DSDIFF, DSF, FLAC, M4A/M4B (including ALAC in those containers), MP2, MP3, Musepack,
@@ -328,8 +346,8 @@ every codec inline, and any file that its metadata parser or FFmpeg cannot read 
 than silently claimed as converted.
 
 The app uses the 320 kbps ceiling to conservatively estimate the transcoded portion at about
-2.4 MB per minute before tags and filesystem overhead. Byte-copied MP3s retain their actual size
-and are reported separately rather than folded into that estimate. A complete total/free-space
+2.4 MB per minute before tags and filesystem overhead. Stream-copied MP3s retain their encoded
+audio and are reported separately rather than folded into that estimate. A complete total/free-space
 preflight is still a release follow-up.
 
 Transcoding a lossless source produces a convenient high-bitrate MP3, but transcoding an already

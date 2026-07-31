@@ -17,6 +17,7 @@ coverage/
 output/
 apps/api/.models/
 apps/api/build/
+apps/api/.pyinstaller/
 apps/api/*.spec
 src-tauri/binaries/
 src-tauri/gen/

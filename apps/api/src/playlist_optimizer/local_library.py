@@ -412,16 +412,31 @@ def read_local_track_metadata(path: Path) -> LocalTrackMetadata:
         raise ValueError("Audio duration is unavailable")
 
     tags = getattr(audio, "tags", None) or {}
+    tagged_title = _first_tag(tags, "title")
+    tagged_artist = _first_tag(tags, "artist", "albumartist")
+    fallback_artist, fallback_title = _metadata_from_filename(path.stem)
     date = _first_tag(tags, "date", "originaldate")
     year_match = _YEAR.search(date) if date else None
     return LocalTrackMetadata(
-        name=_first_tag(tags, "title") or path.stem,
-        artist=_first_tag(tags, "artist", "albumartist") or "Unknown artist",
+        name=tagged_title or fallback_title,
+        artist=tagged_artist or fallback_artist,
         album=_first_tag(tags, "album") or path.parent.name,
         duration_ms=max(round(duration_seconds * 1000), 1),
         isrc=_normalized_isrc(_first_tag(tags, "isrc")),
         release_year=int(year_match.group(1)) if year_match else None,
     )
+
+
+def _metadata_from_filename(stem: str) -> tuple[str, str]:
+    """Recover common DJ-pool `NNN - Artist - Title` filenames without guessing broadly."""
+
+    parts = [part.strip() for part in stem.split(" - ")]
+    if len(parts) >= 2 and parts[0].isdigit():
+        parts = parts[1:]
+    if len(parts) >= 2 and parts[0] and any(parts[1:]):
+        return parts[0], " - ".join(part for part in parts[1:] if part)
+    title = " - ".join(part for part in parts if part).strip() or stem.strip()
+    return "Unknown artist", title
 
 
 def _first_tag(tags: object, *keys: str) -> str | None:

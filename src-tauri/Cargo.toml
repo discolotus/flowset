@@ -2,7 +2,7 @@
 name = "playlist-optimizer-desktop"
 version = "0.1.0"
 description = "Native macOS shell for Playlist Optimizer"
-authors = ["Tanner"]
+authors = ["Disco Lotus"]
 edition = "2021"
 rust-version = "1.88"
 

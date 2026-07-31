@@ -106,11 +106,27 @@ describe("MP3 folder export", () => {
     expect(request.playlists[0].tracks.map((item) => ({
       position: item.playlistPosition,
       path: item.sourcePath,
+      album: item.album,
       group: item.groupLabel,
     }))).toEqual([
-      { position: 1, path: "/Music/Playlist/Source.flac", group: "Opening group" },
-      { position: 2, path: "/Music/Playlist/Already.mp3", group: "Opening group" },
-      { position: 3, path: "/Music/Playlist/Source.flac", group: "All tracks" },
+      {
+        position: 1,
+        path: "/Music/Playlist/Source.flac",
+        album: "Test Album",
+        group: "Opening group",
+      },
+      {
+        position: 2,
+        path: "/Music/Playlist/Already.mp3",
+        album: "Test Album",
+        group: "Opening group",
+      },
+      {
+        position: 3,
+        path: "/Music/Playlist/Source.flac",
+        album: "Test Album",
+        group: "All tracks",
+      },
     ]);
   });
 

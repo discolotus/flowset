@@ -9,6 +9,7 @@ export interface Mp3ExportTrackRequest {
   sourcePath: string;
   title: string;
   artist: string;
+  album: string;
   groupLabel: string;
 }
 
@@ -210,6 +211,7 @@ export function buildMp3ExportRequest({
         sourcePath,
         title: entry.track.name,
         artist: entry.track.artist,
+        album: entry.track.album,
         groupLabel: entry.groupLabel,
       }];
     }),
