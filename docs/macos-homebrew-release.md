@@ -17,7 +17,9 @@ dependencies that carry additional terms.
 
 ## Version and artifact contract
 
-A preview tag uses `v<app-version>-preview.<number>`, for example `v0.1.0-preview.1`. The GitHub
+`VERSION` contains the next SemVer and `CHANGELOG.md` contains a matching level-two section. For a
+preview, the version uses a prerelease suffix such as `0.2.0-preview.1`. The shared release workflow
+creates the matching `v<version>` tag after the version and changelog contract passes. The GitHub
 prerelease contains:
 
 - `Flowset-<tag-without-v>-arm64.zip`
@@ -40,12 +42,12 @@ make lint
 make build
 make test-api-runtime-smoke
 make test-audio-export-smoke
-./scripts/package_macos_release.sh --version 0.1.0-preview.1 --unsigned
+./scripts/package_shared_release.sh
 python3 scripts/smoke_test_api_runtime.py \
   --sidecar "src-tauri/target/release/bundle/macos/Flowset.app/Contents/MacOS/playlist-optimizer-api" \
   --model-dir "src-tauri/target/release/bundle/macos/Flowset.app/Contents/Resources/models/essentia"
 ./scripts/validate_macos_release.sh \
-  dist/release/Flowset-0.1.0-preview.1-arm64.zip \
+  dist/release/Flowset-0.2.0-preview.1-arm64.zip \
   --allow-unsigned
 ```
 
@@ -57,13 +59,16 @@ have its extracted native libraries signed consistently before library validatio
 
 ## CI release
 
-`.github/workflows/release.yml` runs on an Apple-silicon `macos-15` runner. A tag matching
-`v*-preview.*` runs the full web, API, native, real loopback HTTP, and real FFmpeg export checks
-before publishing a GitHub prerelease. After packaging, the same HTTP smoke scenario runs against
-the frozen API executable inside the `.app`. The job also generates and uploads the cask.
+Pull requests run the reusable
+`discolotus/release-workflows/.github/workflows/validate-release.yml@v1` contract in addition to the
+app-specific CI matrix. It requires an increased `VERSION`, matching non-empty changelog notes, and
+an unused tag. After merge, the thin `.github/workflows/release.yml` caller invokes
+`release-macos-app.yml@v1` on the Apple-silicon runner. The shared workflow validates the contract
+again, runs Flowset's full web/API/native/codec verification, packages and validates the app,
+checks the generated cask, creates the tag, and publishes the prerelease and its artifacts.
 
-The workflow deliberately refuses to publish any other tag while Apple signing is unavailable.
-This prevents an unsigned artifact from being presented as stable.
+Release orchestration lives in `discolotus/release-workflows`; this repository retains only its
+app-specific dependency setup, verification commands, and package construction.
 
 ## Homebrew tap update
 
@@ -72,16 +77,18 @@ The separate public repository `discolotus/homebrew-tap` owns
 
 ```bash
 ./scripts/generate_homebrew_cask.sh \
-  --version 0.1.0-preview.1 \
+  --version 0.2.0-preview.1 \
   --sha256 "$(cut -d ' ' -f 1 \
-    dist/release/Flowset-0.1.0-preview.1-arm64.zip.sha256)" \
+    dist/release/Flowset-0.2.0-preview.1-arm64.zip.sha256)" \
   --output /path/to/homebrew-tap/Casks/playlist-optimizer.rb
 
 brew audit --cask --strict /path/to/homebrew-tap/Casks/playlist-optimizer.rb
 brew install --cask /path/to/homebrew-tap/Casks/playlist-optimizer.rb
 ```
 
-Once the tap is pushed, users install this explicitly unsigned preview with:
+The `discolotus/homebrew-tap` scheduled reusable workflow imports the published
+`playlist-optimizer.rb` asset listed in `release-sources.json`. Once that tap update is pushed,
+users install this explicitly unsigned preview with:
 
 ```bash
 brew tap discolotus/tap

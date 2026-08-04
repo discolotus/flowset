@@ -1,0 +1,14 @@
+name: Release metadata
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release-metadata:
+    uses: discolotus/release-workflows/.github/workflows/validate-release.yml@v1
+    with:
+      allow_initial: true

@@ -59,6 +59,8 @@ esac
 
 render() {
   cat <<EOF
+# frozen_string_literal: true
+
 cask "playlist-optimizer" do
   version "$version"
   sha256 "$sha256"
