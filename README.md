@@ -160,7 +160,7 @@ signing, and notarization audit.
 
 The current Apple-silicon package is an explicitly unsigned, non-commercial preview for macOS 15.2
 or newer. It is ad-hoc signed for internal bundle integrity but is not signed by an Apple Developer
-ID or notarized. After the first preview release is published:
+ID or notarized. After the Flowset preview release is published:
 
 ```bash
 brew tap discolotus/tap
@@ -168,8 +168,8 @@ brew install --cask playlist-optimizer
 ```
 
 On first launch, macOS will block the app because Apple Developer Program credentials are not yet
-available. Open **System Settings → Privacy & Security**, confirm that the blocked app is Playlist
-Optimizer, and choose **Open Anyway** only after reviewing the public source, release checksum, and
+available. Open **System Settings → Privacy & Security**, confirm that the blocked app is Flowset,
+and choose **Open Anyway** only after reviewing the public source, release checksum, and
 [third-party notices](THIRD_PARTY_NOTICES.md) before opening it. Essentia and the bundled model
 files add non-commercial terms to the packaged preview even though this repository's original
 source is MIT licensed.

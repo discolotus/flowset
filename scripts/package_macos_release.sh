@@ -61,7 +61,8 @@ case "$(uname -m)" in
 esac
 
 cd "$project_root"
-npm run desktop:build
+npm run desktop:sidecar
+npm run tauri -- build --bundles app --config "{\"version\":\"$version\"}"
 
 app="$project_root/src-tauri/target/release/bundle/macos/Flowset.app"
 [ -d "$app" ] || {
