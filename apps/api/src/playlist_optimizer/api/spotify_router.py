@@ -75,7 +75,7 @@ def spotify_authorization_callback(
         )
     return _callback_html(
         title="Spotify is connected",
-        detail="You can close this window and return to Playlist Optimizer.",
+        detail="You can close this window and return to Flowset.",
         status_code=200,
     )
 

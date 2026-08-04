@@ -20,12 +20,14 @@ dependencies that carry additional terms.
 A preview tag uses `v<app-version>-preview.<number>`, for example `v0.1.0-preview.1`. The GitHub
 prerelease contains:
 
-- `Playlist-Optimizer-<tag-without-v>-arm64.zip`
+- `Flowset-<tag-without-v>-arm64.zip`
 - the matching `.sha256` file
 - a generated `playlist-optimizer.rb` Homebrew cask
 
-The zip contains exactly one `Playlist Optimizer.app`. Its bundle identifier is
-`com.discolotus.playlist-optimizer`; its minimum macOS version is 15.2.
+The zip contains exactly one `Flowset.app`. Its bundle identifier remains
+`com.discolotus.playlist-optimizer` so existing installs, permissions, and app data continue to
+resolve to the same application. Its minimum macOS version is 15.2. The Homebrew cask token also
+remains `playlist-optimizer` for upgrade compatibility.
 
 ## Local release rehearsal
 
@@ -40,10 +42,10 @@ make test-api-runtime-smoke
 make test-audio-export-smoke
 ./scripts/package_macos_release.sh --version 0.1.0-preview.1 --unsigned
 python3 scripts/smoke_test_api_runtime.py \
-  --sidecar "src-tauri/target/release/bundle/macos/Playlist Optimizer.app/Contents/MacOS/playlist-optimizer-api" \
-  --model-dir "src-tauri/target/release/bundle/macos/Playlist Optimizer.app/Contents/Resources/models/essentia"
+  --sidecar "src-tauri/target/release/bundle/macos/Flowset.app/Contents/MacOS/playlist-optimizer-api" \
+  --model-dir "src-tauri/target/release/bundle/macos/Flowset.app/Contents/Resources/models/essentia"
 ./scripts/validate_macos_release.sh \
-  dist/release/Playlist-Optimizer-0.1.0-preview.1-arm64.zip \
+  dist/release/Flowset-0.1.0-preview.1-arm64.zip \
   --allow-unsigned
 ```
 
@@ -72,7 +74,7 @@ The separate public repository `discolotus/homebrew-tap` owns
 ./scripts/generate_homebrew_cask.sh \
   --version 0.1.0-preview.1 \
   --sha256 "$(cut -d ' ' -f 1 \
-    dist/release/Playlist-Optimizer-0.1.0-preview.1-arm64.zip.sha256)" \
+    dist/release/Flowset-0.1.0-preview.1-arm64.zip.sha256)" \
   --output /path/to/homebrew-tap/Casks/playlist-optimizer.rb
 
 brew audit --cask --strict /path/to/homebrew-tap/Casks/playlist-optimizer.rb
@@ -89,7 +91,7 @@ brew install --cask playlist-optimizer
 Because the app has no Developer ID signature, macOS will block its first launch. Users should
 verify that the cask URL points to `discolotus/spotify-playlist-optimizer`, confirm Homebrew's
 downloaded SHA-256 matches the release checksum, and then use **System Settings → Privacy &
-Security → Open Anyway** for Playlist Optimizer. That explicit Gatekeeper exception should never
+Security → Open Anyway** for Flowset. That explicit Gatekeeper exception should never
 be used for an unverified artifact.
 
 ## Clean-install verification
@@ -97,7 +99,7 @@ be used for an unverified artifact.
 The release is not complete until a fresh cask installation proves all of the following:
 
 1. Homebrew downloads the public GitHub artifact and verifies its checksum.
-2. `/Applications/Playlist Optimizer.app` passes `codesign --verify --deep --strict`.
+2. `/Applications/Flowset.app` passes `codesign --verify --deep --strict`.
 3. The packaged API handles health, capabilities, recipe preview, local-folder import, ranged audio
    preview, and traversal rejection over its real loopback HTTP boundary.
 4. The real FFmpeg smoke tests export MP3 from MP3, FLAC, Opus, and DFF inputs and transcode Opus

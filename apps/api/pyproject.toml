@@ -1,7 +1,7 @@
 [project]
 name = "playlist-optimizer-api"
 version = "0.1.0"
-description = "FastAPI service and optimization core for Spotify Playlist Optimizer"
+description = "FastAPI service and optimization core for Flowset"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

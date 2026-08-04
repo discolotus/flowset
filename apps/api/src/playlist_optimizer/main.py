@@ -9,7 +9,7 @@ from playlist_optimizer.config import get_settings
 settings = get_settings()
 
 app = FastAPI(
-    title="Spotify Playlist Optimizer API",
+    title="Flowset API",
     summary="Provider-neutral playlist analysis and optimization service.",
     version=__version__,
 )

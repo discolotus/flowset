@@ -35,7 +35,7 @@ export function ParameterGuide({ parameter }: { parameter: NumericParameter }) {
         </div>
         <p className="parameter-glossary-note">
           Score meanings and raw magnitudes are provider-specific. Compare tracks analyzed by the
-          same backend; Sequence keeps unavailable measurements visibly disabled.
+          same backend; Flowset keeps unavailable measurements visibly disabled.
         </p>
       </details>
     </div>

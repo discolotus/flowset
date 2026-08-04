@@ -1,3 +1,3 @@
-"""Spotify Playlist Optimizer API."""
+"""Flowset API."""
 
 __version__ = "0.1.0"

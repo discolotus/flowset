@@ -17,7 +17,7 @@ every format does not produce a uniform, broadly compatible destination.
 
 ## Decision
 
-Sequence adds an explicit **Portable MP3 folders** export destination in the native Mac app. It is
+Flowset adds an explicit **Portable MP3 folders** export destination in the native Mac app. It is
 separate from Apple Music import, DJ-bundle export, and M3U8 export.
 
 ### Ordered hierarchy
@@ -38,7 +38,7 @@ separate from Apple Music import, DJ-bundle export, and M3U8 export.
 ### Copy and transcode policy
 
 - A source whose extension is `.mp3`, compared case-insensitively, has its encoded audio
-  stream-copied without decoding or re-encoding. Its exported container is new so Sequence can
+  stream-copied without decoding or re-encoding. Its exported container is new so Flowset can
   write canonical title, artist, album, and playlist-position tags from the inspected preview.
 - Supported inputs with absent embedded title/artist tags use a conservative filename fallback:
   an optional numeric prefix is removed and `Artist - Title` is split once. Export never puts the

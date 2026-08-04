@@ -12,7 +12,7 @@ target should silently omit a track whose path or codec it cannot handle.
 
 ## Decision
 
-Sequence uses `RecipeOutput.tracks` as the one canonical ordered sequence for every export.
+Flowset uses `RecipeOutput.tracks` as the one canonical ordered sequence for every export.
 Subgroup ranges annotate that sequence but never reconstruct it.
 
 The Mac app provides:

@@ -430,7 +430,7 @@ fn run_osascript(script: &str) -> Result<String, String> {
     if !output.status.success() {
         let details = String::from_utf8_lossy(&output.stderr).trim().to_owned();
         if details.contains("-1743") {
-            return Err("Playlist Optimizer does not have permission to control Music. Allow Music access in System Settings > Privacy & Security > Automation, then try again.".to_owned());
+            return Err("Flowset does not have permission to control Music. Allow Music access in System Settings > Privacy & Security > Automation, then try again.".to_owned());
         }
         return Err(format!(
             "Apple Music import could not be completed: {details}"
@@ -609,7 +609,7 @@ mod tests {
 
     fn request_with_paths(paths: &[PathBuf]) -> AppleMusicImportRequest {
         AppleMusicImportRequest {
-            folder_name: "Playlist Optimizer — Night Drive".to_owned(),
+            folder_name: "Flowset — Night Drive".to_owned(),
             playlists: vec![AppleMusicPlaylistRequest {
                 name: "Low Arousal \"Warm-up\"".to_owned(),
                 track_paths: paths

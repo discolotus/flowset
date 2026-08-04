@@ -15,7 +15,7 @@
 </defs>
 <rect width="100%" height="100%" fill="#0F172A"/>
 <rect x="0" y="0" width="1600" height="1520" rx="8" fill="#0B100D" stroke="#0B100D" stroke-width="1.5"/>
-<text x="800" y="760" text-anchor="middle" dominant-baseline="central" font-family="Inter, Roboto, system-ui, -apple-system, sans-serif" font-size="1" fill="#0B100D">Sequence</text>
+<text x="800" y="760" text-anchor="middle" dominant-baseline="central" font-family="Inter, Roboto, system-ui, -apple-system, sans-serif" font-size="1" fill="#0B100D">Flowset</text>
 <text x="800" y="40" text-anchor="middle" dominant-baseline="hanging" font-family="Inter, Roboto, system-ui, -apple-system, sans-serif" font-size="30" fill="#F6F8F4" font-weight="700">How one crate becomes several ready-to-use playlists</text>
 <text x="800" y="96" text-anchor="middle" dominant-baseline="hanging" font-family="Inter, Roboto, system-ui, -apple-system, sans-serif" font-size="16" fill="#AAB5AC">Every track stays visible. Split creates playlists; grouping creates sections; sorting only changes order inside the smallest active section.</text>
 <text x="40" y="180" text-anchor="start" dominant-baseline="hanging" font-family="Inter, Roboto, system-ui, -apple-system, sans-serif" font-size="15" fill="#B9ED74" font-weight="700">SOURCE</text>

@@ -68,7 +68,7 @@ describe("BatchDestinationPanel", () => {
           plan: {
             dryRun: true,
             ready: true,
-            requestedFolderName: "Sequence — Night Drive",
+            requestedFolderName: "Flowset — Night Drive",
             playlistCount: 3,
             totalTrackCount: 92,
             playlists: [],
@@ -100,8 +100,8 @@ describe("BatchDestinationPanel", () => {
           status: "imported",
           report: {
             dryRun: false,
-            requestedFolderName: "Sequence",
-            createdFolderName: "Sequence 2",
+            requestedFolderName: "Flowset",
+            createdFolderName: "Flowset 2",
             playlistCount: 1,
             totalTrackCount: 2,
             addedCount: 2,
@@ -147,9 +147,9 @@ describe("BatchDestinationPanel", () => {
           status: "complete",
           report: {
             cancelled: false,
-            directory: "/Exports/Sequence",
-            manifestPath: "/Exports/Sequence/manifest.json",
-            reportPath: "/Exports/Sequence/report.txt",
+            directory: "/Exports/Flowset",
+            manifestPath: "/Exports/Flowset/manifest.json",
+            reportPath: "/Exports/Flowset/report.txt",
             playlistCount: 1,
             trackCount: 3,
             copiedCount: 1,
@@ -166,8 +166,8 @@ describe("BatchDestinationPanel", () => {
 
     expect(markup).toContain("Partially exported 2/3 tracks");
     expect(markup).toContain("1 failed; see the export manifest");
-    expect(markup).toContain("Saved to /Exports/Sequence");
-    expect(markup).toContain("Manifest: /Exports/Sequence/manifest.json");
+    expect(markup).toContain("Saved to /Exports/Flowset");
+    expect(markup).toContain("Manifest: /Exports/Flowset/manifest.json");
   });
 
   it("explains that MP3 folders require the desktop app in browser mode", () => {

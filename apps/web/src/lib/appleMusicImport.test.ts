@@ -44,14 +44,14 @@ const output = (tracks: Track[]): RecipeOutput => ({
 describe("Apple Music import request", () => {
   it("preserves the exact output order and resolves relative paths", () => {
     const request = buildAppleMusicImportRequest({
-      folderName: "Sequence — Night Drive",
+      folderName: "Flowset — Night Drive",
       outputs: [output([track("second", "Second"), track("first", "First")])],
       localAudioPaths: { first: "First.mp3", second: "Second.flac" },
       libraryRootPath: "/Volumes/Music",
     });
 
     expect(request).toEqual({
-      folderName: "Sequence — Night Drive",
+      folderName: "Flowset — Night Drive",
       playlists: [{
         name: "Low Arousal",
         trackPaths: ["/Volumes/Music/Second.flac", "/Volumes/Music/First.mp3"],
@@ -61,14 +61,14 @@ describe("Apple Music import request", () => {
 
   it("blocks the whole request instead of silently dropping missing tracks", () => {
     expect(() => buildAppleMusicImportRequest({
-      folderName: "Sequence",
+      folderName: "Flowset",
       outputs: [output([track("missing", "Missing")])],
       localAudioPaths: {},
     })).toThrow(/no absolute local file path/i);
   });
 
   it("uses separate dry-run and live native commands", async () => {
-    const request = { folderName: "Sequence", playlists: [] };
+    const request = { folderName: "Flowset", playlists: [] };
     const invoke = vi.fn()
       .mockResolvedValueOnce({ dryRun: true, ready: true })
       .mockResolvedValueOnce({ dryRun: false, addedCount: 2 });

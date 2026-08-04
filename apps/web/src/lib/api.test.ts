@@ -257,7 +257,7 @@ describe("Spotify destination API", () => {
       playlists: [{
         position: 1,
         name: "Low",
-        description: "Created by Sequence",
+        description: "Created by Flowset",
         tracks: [
           { position: 1, local_track_id: "second", spotify_uri: "spotify:track:second" },
           { position: 2, local_track_id: "first", spotify_uri: "spotify:track:first" },
@@ -283,7 +283,7 @@ describe("Spotify destination API", () => {
       playlists: [{
         position: 1,
         name: "Low",
-        description: "Created by Sequence",
+        description: "Created by Flowset",
         tracks: [],
       }],
     })).rejects.toThrow(/connection dropped/i);
