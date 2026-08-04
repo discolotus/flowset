@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.0-preview.3] - 2026-08-03
+
+- Simplify the workspace by removing the duplicate export action and moving secondary controls
+  into contextual or collapsed surfaces.
+- Make export destination selection progressive and add complete modal keyboard, focus,
+  backdrop, and scroll-lock behavior.
+- Add App-level behavioral coverage for recipe construction and persistence, every export
+  destination, responsive behavior, and a durable feature utility evidence matrix.
+
 ## [0.2.0-preview.2] - 2026-08-03
 
 - Rename the user-facing application to Flowset and ship the selected Flowset icon while retaining
