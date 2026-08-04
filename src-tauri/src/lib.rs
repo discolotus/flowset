@@ -12,7 +12,9 @@ use tauri_plugin_shell::ShellExt;
 
 mod apple_music;
 mod mp3_export;
+mod rekordbox_export;
 mod spotify;
+mod workspace_state;
 
 const REQUIRED_ESSENTIA_MODEL_FILES: [&str; 9] = [
     "msd-musicnn-1.pb",
@@ -199,7 +201,10 @@ fn write_export_bundle(
     }
 }
 
-fn validate_export_component<'a>(value: &'a str, label: &str) -> Result<&'a str, String> {
+pub(crate) fn validate_export_component<'a>(
+    value: &'a str,
+    label: &str,
+) -> Result<&'a str, String> {
     let trimmed = value.trim();
     let path = Path::new(trimmed);
     if trimmed.is_empty()
@@ -216,7 +221,7 @@ fn validate_export_component<'a>(value: &'a str, label: &str) -> Result<&'a str,
     Ok(trimmed)
 }
 
-fn validate_bundle_file(filename: &str, contents: &str) -> Result<(), String> {
+pub(crate) fn validate_bundle_file(filename: &str, contents: &str) -> Result<(), String> {
     if contents.len() > 32 * 1024 * 1024 {
         return Err(format!(
             "DJ bundle file {filename:?} is unexpectedly large."
@@ -241,7 +246,7 @@ fn validate_bundle_file(filename: &str, contents: &str) -> Result<(), String> {
     }
 }
 
-fn create_unique_export_directory(parent: &Path, name: &str) -> Result<PathBuf, String> {
+pub(crate) fn create_unique_export_directory(parent: &Path, name: &str) -> Result<PathBuf, String> {
     for copy_number in 1..=10_000 {
         let candidate_name = if copy_number == 1 {
             name.to_owned()
@@ -328,7 +333,10 @@ pub fn run() {
             apple_music::plan_apple_music_import,
             apple_music::import_apple_music_playlists,
             mp3_export::export_playlists_as_mp3,
-            spotify::open_spotify_authorization
+            rekordbox_export::write_rekordbox_compatible_bundle,
+            spotify::open_spotify_authorization,
+            workspace_state::load_workspace_state,
+            workspace_state::save_workspace_state
         ])
         .setup(|app| {
             let model_dir = bundled_essentia_model_dir(app)?;

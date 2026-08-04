@@ -12,7 +12,7 @@ use tauri::Emitter;
 const MAX_PLAYLISTS: usize = 1_000;
 const MAX_TRACKS: usize = 100_000;
 const MAX_COMPONENT_BYTES: usize = 240;
-const SUPPORTED_TRANSCODE_EXTENSIONS: &[&str] = &[
+pub(crate) const SUPPORTED_TRANSCODE_EXTENSIONS: &[&str] = &[
     "aac", "ac3", "adts", "aif", "aifc", "aiff", "ape", "dff", "dsf", "eac3", "flac", "m4a", "m4b",
     "mp+", "mp2", "mpc", "mpp", "oga", "ogg", "opus", "spx", "tak", "tta", "wav", "wave", "wma",
     "wv",
@@ -738,7 +738,7 @@ fn ffmpeg_supports_high_quality_mp3(path: &Path) -> bool {
     child.wait().is_ok_and(|status| status.success())
 }
 
-fn resolve_ffmpeg() -> Option<PathBuf> {
+pub(crate) fn resolve_ffmpeg() -> Option<PathBuf> {
     let mut candidates = Vec::new();
     for variable in ["SEQUENCE_FFMPEG_PATH", "PLAYLIST_OPTIMIZER_FFMPEG_PATH"] {
         if let Some(value) = env::var_os(variable) {
@@ -1023,7 +1023,7 @@ mod tests {
         destination.extend_from_slice(id);
         destination.extend_from_slice(&(data.len() as u64).to_be_bytes());
         destination.extend_from_slice(data);
-        if data.len() % 2 != 0 {
+        if !data.len().is_multiple_of(2) {
             destination.push(0);
         }
     }

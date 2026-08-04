@@ -9,9 +9,11 @@ interface LocalLibraryPickerProps {
   error: string | null;
   nativeFolderSelection?: boolean;
   selectingNativeFolder?: boolean;
+  recentLibraryRoots?: string[];
   disabled?: boolean;
   onBrowse: (path: string) => void;
   onSelectNativeFolder?: () => void;
+  onSelectRecentRoot?: (path: string) => void;
   onChooseLibrary: () => void;
   onImport: (folder: LocalLibraryFolder) => void;
   onChangeLibrary: () => void;
@@ -91,9 +93,11 @@ export function LocalLibraryPicker(props: LocalLibraryPickerProps) {
     error,
     nativeFolderSelection = false,
     selectingNativeFolder = false,
+    recentLibraryRoots = [],
     disabled = false,
     onBrowse,
     onSelectNativeFolder,
+    onSelectRecentRoot,
     onChooseLibrary,
   } = props;
   if (library) return <FolderCandidates {...props} />;
@@ -128,6 +132,25 @@ export function LocalLibraryPicker(props: LocalLibraryPickerProps) {
           )}
         </div>
       </header>
+
+      {nativeFolderSelection && recentLibraryRoots.length > 0 && onSelectRecentRoot && (
+        <label className="control-field mt-4 max-w-2xl">
+          <span>Recent parent folders</span>
+          <select
+            defaultValue=""
+            disabled={disabled || selectingNativeFolder}
+            onChange={(event) => {
+              if (event.target.value) onSelectRecentRoot(event.target.value);
+              event.currentTarget.value = "";
+            }}
+          >
+            <option value="">Choose a recent folder…</option>
+            {recentLibraryRoots.map((path) => (
+              <option key={path} value={path}>{path}</option>
+            ))}
+          </select>
+        </label>
+      )}
 
       {error && <div className="notice" role="alert">{error}</div>}
       {browsing && !browser ? (

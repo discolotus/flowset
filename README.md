@@ -70,8 +70,8 @@ defines these operation boundaries as product invariants.
 - Deterministic equal-width binning, scoped sorting, Camelot key ordering, and missing-data retention
 - Camelot key conversion, constraint reporting, explicit-track filtering, and demo fixtures
 - Unit tests for the API, strategies, frontend helpers, and native export safety boundaries
-- CI for web build/type-check/tests, API lint/tests, native Rust tests, and real FFmpeg/FFprobe
-  codec smoke tests
+- CI for web build/type-check/tests, API lint/tests, native Rust tests, a real loopback API-process
+  smoke test, and real FFmpeg/FFprobe codec smoke tests
 
 Spotify access and refresh tokens currently live only in the loopback API process, so the user must
 connect again after restarting the backend or desktop app. Durable account persistence remains a
@@ -108,8 +108,10 @@ Useful checks:
 make test
 make lint
 make build
-# Real FFmpeg/FFprobe smoke for FLAC, Opus, and DFF/DSDIFF conversion
-make test-mp3-export-smoke
+# Launch the API as a separate process and exercise recipes and local files over HTTP
+make test-api-runtime-smoke
+# Real FFmpeg/FFprobe smoke for MP3 export and Rekordbox-compatible conversion
+make test-audio-export-smoke
 ```
 
 ## Run as a macOS app

@@ -13,10 +13,14 @@ import {
   type AnalysisPipelineStage,
 } from "./components/AnalysisPipelineProgress";
 import { LocalLibraryPicker } from "./components/LocalLibraryPicker";
+import { LocalDataSummary } from "./components/LocalDataSummary";
 import { OutputPlaylistCard } from "./components/OutputPlaylistCard";
+import { ParameterGuide } from "./components/ParameterGuide";
+import { RecipeLibrary } from "./components/RecipeLibrary";
 import { RowDensityToggle } from "./components/RowDensityToggle";
 import { SplitFactorGrid } from "./components/SplitFactorGrid";
 import { SourcePlaylistPicker } from "./components/SourcePlaylistPicker";
+import { ExportDialog } from "./components/ExportDialog";
 import {
   browseLocalLibrary,
   getAudioFeatureProgress,
@@ -62,7 +66,11 @@ import {
   runAppleMusicImport,
   type AppleMusicImportRequest,
 } from "./lib/appleMusicImport";
-import { buildExportCompatibilityManifest, exportDjBundle } from "./lib/djExport";
+import {
+  buildExportCompatibilityManifest,
+  exportDjBundle,
+  type RekordboxFallbackFormat,
+} from "./lib/djExport";
 import {
   estimateMp3Export,
   exportMp3Folders,
@@ -79,6 +87,18 @@ import {
   type SplitFactorChanges,
 } from "./lib/factorGrid";
 import { readRowDensity, saveRowDensity, type RowDensity } from "./lib/rowDensity";
+import {
+  forgetRecipe,
+  loadWorkspaceState,
+  readBrowserWorkspaceState,
+  rememberLibraryRoot,
+  renameRecipe,
+  saveRecipe,
+  saveWorkspaceState,
+  type RecipeSettings,
+  type SavedRecipe,
+  type WorkspaceState,
+} from "./lib/workspaceState";
 import type {
   AudioFeatureProviderId,
   AudioFeatureProviderOption,
@@ -351,6 +371,8 @@ export default function App() {
   const [previewing, setPreviewing] = useState(false);
   const [batchExportState, setBatchExportState] = useState<BatchActionState>({ status: "idle" });
   const [djBundleState, setDjBundleState] = useState<BatchActionState>({ status: "idle" });
+  const [maintainRekordboxCompatibility, setMaintainRekordboxCompatibility] = useState(false);
+  const [rekordboxFallbackFormat, setRekordboxFallbackFormat] = useState<RekordboxFallbackFormat>("flac");
   const [mp3ExportState, setMp3ExportState] = useState<Mp3ExportActionState>({ status: "idle" });
   const [appleMusicState, setAppleMusicState] = useState<AppleMusicActionState>({ status: "idle" });
   const [reviewedAppleMusicRequest, setReviewedAppleMusicRequest] =
@@ -360,11 +382,48 @@ export default function App() {
   const [spotifyPreviewRevision, setSpotifyPreviewRevision] = useState(0);
   const reviewedAppleMusicRevision = useRef<number | null>(null);
   const [rowDensity, setRowDensity] = useState<RowDensity>(() => readRowDensity(localStorage));
+  const [workspaceState, setWorkspaceState] = useState<WorkspaceState>(() =>
+    readBrowserWorkspaceState(localStorage),
+  );
+  const workspaceStateRef = useRef(workspaceState);
+  const [workspaceStatePath, setWorkspaceStatePath] = useState<string | null>(null);
+  const [selectedSavedRecipeId, setSelectedSavedRecipeId] = useState("");
+  const [persistenceStatus, setPersistenceStatus] = useState<string | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const changeRowDensity = (density: RowDensity) => {
     setRowDensity(density);
     saveRowDensity(localStorage, density);
+  };
+
+  useEffect(() => {
+    let stale = false;
+    loadWorkspaceState({ nativeApp, storage: localStorage })
+      .then((loaded) => {
+        if (stale) return;
+        workspaceStateRef.current = loaded.state;
+        setWorkspaceState(loaded.state);
+        setWorkspaceStatePath(loaded.path);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [nativeApp, localStorage]);
+
+  const persistWorkspace = (next: WorkspaceState, message?: string) => {
+    workspaceStateRef.current = next;
+    setWorkspaceState(next);
+    saveWorkspaceState({ nativeApp, storage: localStorage, state: next })
+      .then((path) => {
+        if (path) setWorkspaceStatePath(path);
+        if (message) setPersistenceStatus(message);
+      })
+      .catch((reason: unknown) => {
+        setPersistenceStatus(
+          reason instanceof Error ? reason.message : "Could not save local app history.",
+        );
+      });
   };
 
   useEffect(() => {
@@ -617,6 +676,29 @@ export default function App() {
       })
       : null
   ), [libraryRootPath, localAudioPaths, preview]);
+  const analysisCachePaths = useMemo(() => {
+    if (!libraryRootPath) return [];
+    const directories = new Set(Object.values(analysisCacheDirectories).flat());
+    return [...directories].map((directory) => {
+      const base = directory
+        ? `${libraryRootPath.replace(/\/$/, "")}/${directory}`
+        : libraryRootPath.replace(/\/$/, "");
+      return `${base}/.sequence/analysis-cache.json`;
+    });
+  }, [analysisCacheDirectories, libraryRootPath]);
+  const currentRecipeSettings: RecipeSettings = {
+    name: recipeName,
+    distributionParameter,
+    distributionBinCount,
+    splitEnabled,
+    splitFactors,
+    subgroupEnabled,
+    subgroupParameter,
+    subgroupBinCount,
+    sortEnabled,
+    sortParameter,
+    sortDirection,
+  };
 
   const addFactorToGrid = () => {
     setSplitFactors((current) => {
@@ -685,6 +767,8 @@ export default function App() {
         libraryRootPath,
         bundleName: `Sequence — ${recipeName}`,
         nativeApp,
+        maintainRekordboxCompatibility,
+        rekordboxFallbackFormat,
       });
       if (result.cancelled) {
         setDjBundleState({ status: "idle" });
@@ -708,7 +792,7 @@ export default function App() {
       }
       setDjBundleState({
         status: "success",
-        message: `Saved ${result.fileCount} files for ${result.playlistCount} playlists${result.directory ? ` to ${result.directory}` : ""}.${warningCopy}`,
+        message: `Saved ${result.fileCount} files for ${result.playlistCount} playlists${result.convertedCount ? ` and converted ${result.convertedCount} incompatible ${result.convertedCount === 1 ? "track" : "tracks"} to ${result.compatibilityFormat?.toUpperCase()}` : ""}${result.directory ? ` to ${result.directory}` : ""}.${warningCopy}`,
       });
     } catch (reason: unknown) {
       setDjBundleState({
@@ -756,7 +840,17 @@ export default function App() {
       const committed = runForCurrentMp3ExportRevision(
         revision,
         previewRevision.current,
-        () => setMp3ExportState({ status: "complete", report }),
+        () => {
+          setMp3ExportState({ status: "complete", report });
+          persistWorkspace({
+            ...workspaceStateRef.current,
+            lastMp3Export: {
+              directory: report.directory,
+              manifestPath: report.manifestPath,
+              exportedAt: new Date().toISOString(),
+            },
+          });
+        },
       );
       if (!committed) setMp3ExportState({ status: "idle" });
     } catch (reason: unknown) {
@@ -874,6 +968,17 @@ export default function App() {
     setLibraryError(null);
   };
 
+  const activateNativeLibrary = async (path: string) => {
+    const listing = await selectLocalLibraryRoot(path);
+    setLibraryRootPath(path);
+    setFolderBrowser(listing);
+    setLibrary(listing);
+    const nextState = rememberLibraryRoot(workspaceStateRef.current, path);
+    persistWorkspace(nextState, `Remembered ${path} as a recent parent folder.`);
+    const providers = await getAudioFeatureProviders();
+    setFeatureProviders(providers);
+  };
+
   const chooseNativeLibrary = async () => {
     setSelectingNativeFolder(true);
     setLibraryError(null);
@@ -885,18 +990,67 @@ export default function App() {
         title: "Choose your music library",
       });
       if (typeof selected !== "string") return;
-      const listing = await selectLocalLibraryRoot(selected);
-      setLibraryRootPath(selected);
-      setFolderBrowser(listing);
-      setLibrary(listing);
-      const providers = await getAudioFeatureProviders();
-      setFeatureProviders(providers);
+      await activateNativeLibrary(selected);
     } catch (reason: unknown) {
       setLibraryError(
         reason instanceof Error ? reason.message : "Could not select the music library.",
       );
     } finally {
       setSelectingNativeFolder(false);
+    }
+  };
+
+  const chooseRecentLibrary = async (path: string) => {
+    setSelectingNativeFolder(true);
+    setLibraryError(null);
+    try {
+      await activateNativeLibrary(path);
+    } catch (reason: unknown) {
+      setLibraryError(
+        reason instanceof Error
+          ? `${reason.message} Choose the folder again if it moved.`
+          : "Could not reopen that recent music library.",
+      );
+    } finally {
+      setSelectingNativeFolder(false);
+    }
+  };
+
+  const saveCurrentRecipe = () => {
+    const next = saveRecipe(workspaceStateRef.current, currentRecipeSettings);
+    persistWorkspace(next, `Saved “${recipeName.trim() || "Untitled recipe"}” to recipe history.`);
+    setSelectedSavedRecipeId(next.savedRecipes[0]?.id ?? "");
+  };
+
+  const applySavedRecipe = (recipe: SavedRecipe) => {
+    setRecipeName(recipe.name);
+    setDistributionParameter(recipe.distributionParameter);
+    setDistributionBinCount(recipe.distributionBinCount);
+    setSplitEnabled(recipe.splitEnabled);
+    setSplitFactors(recipe.splitFactors.map((factor) => ({ ...factor })));
+    setSubgroupEnabled(recipe.subgroupEnabled);
+    setSubgroupParameter(recipe.subgroupParameter);
+    setSubgroupBinCount(recipe.subgroupBinCount);
+    setSortEnabled(recipe.sortEnabled);
+    setSortParameter(recipe.sortParameter);
+    setSortDirection(recipe.sortDirection);
+    setPersistenceStatus(`Applied “${recipe.name}” to the current source selection.`);
+  };
+
+  const deleteSavedRecipe = (id: string) => {
+    const next = forgetRecipe(workspaceStateRef.current, id);
+    persistWorkspace(next, "Removed the saved recipe.");
+    setSelectedSavedRecipeId("");
+  };
+
+  const renameSavedRecipe = (id: string, name: string) => {
+    try {
+      const next = renameRecipe(workspaceStateRef.current, id, name);
+      persistWorkspace(next, `Renamed the saved recipe to “${name.trim()}”.`);
+    } catch (reason: unknown) {
+      setPersistenceStatus(
+        reason instanceof Error ? reason.message : "Could not rename the recipe.",
+      );
     }
   };
 
@@ -1166,7 +1320,9 @@ export default function App() {
             <span className="hidden text-[10px] uppercase tracking-[0.16em] text-acid/65 sm:block">
               {sourceMode === "local" ? "Local library workspace" : "Fixture workspace"}
             </span>
-            <a className="connect-button" href="#spotify-destination">Spotify destination</a>
+            <button type="button" className="connect-button" onClick={() => setExportDialogOpen(true)}>
+              Export
+            </button>
           </div>
         </nav>
       </header>
@@ -1228,9 +1384,11 @@ export default function App() {
                 error={libraryError}
                 nativeFolderSelection={nativeApp}
                 selectingNativeFolder={selectingNativeFolder}
+                recentLibraryRoots={workspaceState.recentLibraryRoots}
                 disabled={analyzing}
                 onBrowse={browseFolders}
                 onSelectNativeFolder={chooseNativeLibrary}
+                onSelectRecentRoot={chooseRecentLibrary}
                 onChooseLibrary={chooseLibrary}
                 onImport={importFolder}
                 onChangeLibrary={changeLibrary}
@@ -1313,8 +1471,35 @@ export default function App() {
             <p className="mt-3 text-sm text-mist/60">The distribution and recipe preview will appear here.</p>
           </section>
         ) : (
-          <div className="mt-8 grid items-start gap-7 lg:grid-cols-[360px_minmax(0,1fr)]">
-            <aside className="recipe-builder lg:sticky lg:top-24" aria-labelledby="recipe-heading">
+          <div className="workspace-panes mt-8 grid items-start gap-7 lg:grid-cols-[360px_minmax(0,1fr)]">
+            <aside className="workspace-sidebar recipe-builder" aria-labelledby="recipe-heading">
+              <div className="workspace-sidebar-scroll">
+              <section className="sidebar-source-list" aria-labelledby="sidebar-sources-heading">
+                <p className="eyebrow">Source playlists</p>
+                <h2 id="sidebar-sources-heading">Included in this recipe</h2>
+                <div className="mt-3 space-y-1.5">
+                  {playlists.map((playlist) => {
+                    const selected = selectedIds.has(playlist.id);
+                    return (
+                      <button
+                        key={playlist.id}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={selected}
+                        disabled={analyzing}
+                        className={selected ? "selected" : ""}
+                        onClick={() => toggleSource(playlist.id)}
+                      >
+                        <span className={`selection-box ${selected ? "selected" : ""}`} aria-hidden="true">
+                          {selected ? "✓" : ""}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{playlist.name}</span>
+                        <small>{playlist.tracks.length}</small>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
               <div className="border-b border-line px-5 pb-5 pt-6">
                 <p className="eyebrow">Recipe builder</p>
                 <h2 id="recipe-heading" className="mt-1 font-display text-xl font-semibold">Order of operations</h2>
@@ -1375,9 +1560,38 @@ export default function App() {
                 <span className="block text-[10px] uppercase tracking-[0.16em] text-mist/45">Live recipe</span>
                 <p className="mt-2 text-sm leading-6 text-white/75">{recipeSentence}.</p>
               </div>
+              <RecipeLibrary
+                recipes={workspaceState.savedRecipes}
+                selectedRecipeId={selectedSavedRecipeId}
+                onSelectedRecipeIdChange={setSelectedSavedRecipeId}
+                onSave={saveCurrentRecipe}
+                onApply={applySavedRecipe}
+                onRename={renameSavedRecipe}
+                onDelete={deleteSavedRecipe}
+              />
+              <LocalDataSummary
+                analysisCachePaths={analysisCachePaths}
+                lastMp3Export={workspaceState.lastMp3Export}
+                workspaceStatePath={workspaceStatePath}
+              />
+              {persistenceStatus && (
+                <p className="sidebar-persistence-status" role="status">{persistenceStatus}</p>
+              )}
+              </div>
+              <div className="workspace-sidebar-footer">
+                <button
+                  type="button"
+                  className="primary-button w-full"
+                  disabled={previewing || !preview?.outputs.length}
+                  onClick={() => setExportDialogOpen(true)}
+                >
+                  Export {preview?.outputs.length ?? 0} playlist{preview?.outputs.length === 1 ? "" : "s"}…
+                </button>
+                <span>{outputTrackCount} ordered track entries · preview first</span>
+              </div>
             </aside>
 
-            <div className="min-w-0">
+            <div className="workspace-main-scroll min-w-0">
               <section className="distribution-panel" aria-labelledby="distribution-heading">
                 <header className="flex flex-col justify-between gap-4 border-b border-line px-5 py-5 sm:flex-row sm:items-end">
                   <div>
@@ -1399,6 +1613,7 @@ export default function App() {
                     distribution={distribution}
                     splitBinCount={matchingDistributionFactor?.binCount ?? null}
                   />
+                  <ParameterGuide parameter={distributionParameter} />
                   <div className="distribution-table" aria-label="Distribution bin values">
                     {distribution.bins.map((bin) => (
                       <div key={bin.id}>
@@ -1442,34 +1657,6 @@ export default function App() {
                   </div>
                 </header>
 
-                <BatchDestinationPanel
-                  playlistCount={preview?.outputs.length ?? 0}
-                  trackCount={outputTrackCount}
-                  nativeApp={nativeApp}
-                  disabled={previewing || !preview?.outputs.length}
-                  appleMusicState={appleMusicState}
-                  djBundleState={djBundleState}
-                  m3u8State={batchExportState}
-                  mp3ExportState={mp3ExportState}
-                  mp3Estimate={estimateMp3Export({
-                    outputs: preview?.outputs ?? [],
-                    localAudioPaths,
-                    libraryRootPath,
-                  })}
-                  spotifyOutputs={preview?.outputs ?? []}
-                  spotifyRevision={spotifyPreviewRevision}
-                  spotifyLocalSource={sourceMode === "local"}
-                  rekordboxWarningCount={exportCompatibility?.issues.filter(
-                    (issue) => issue.target === "rekordbox" && issue.severity === "warning",
-                  ).length ?? 0}
-                  onPlanAppleMusic={reviewAppleMusicImport}
-                  onConfirmAppleMusic={confirmAppleMusicImport}
-                  onCancelAppleMusic={cancelAppleMusicImport}
-                  onExportDjBundle={exportAllDjFormats}
-                  onExportM3u8={exportAllPlaylists}
-                  onExportMp3={exportAllMp3Folders}
-                />
-
                 {(error || (preview?.warnings.length ?? 0) > 0) && (
                   <div className="notice" role={error ? "alert" : "status"}>
                     {error ?? preview?.warnings.join(" ")}
@@ -1508,6 +1695,40 @@ export default function App() {
           </div>
         )}
       </main>
+
+      <ExportDialog open={exportDialogOpen} onClose={() => setExportDialogOpen(false)}>
+        <BatchDestinationPanel
+          playlistCount={preview?.outputs.length ?? 0}
+          trackCount={outputTrackCount}
+          nativeApp={nativeApp}
+          disabled={previewing || !preview?.outputs.length}
+          appleMusicState={appleMusicState}
+          djBundleState={djBundleState}
+          m3u8State={batchExportState}
+          mp3ExportState={mp3ExportState}
+          mp3Estimate={estimateMp3Export({
+            outputs: preview?.outputs ?? [],
+            localAudioPaths,
+            libraryRootPath,
+          })}
+          spotifyOutputs={preview?.outputs ?? []}
+          spotifyRevision={spotifyPreviewRevision}
+          spotifyLocalSource={sourceMode === "local"}
+          rekordboxWarningCount={exportCompatibility?.issues.filter(
+            (issue) => issue.target === "rekordbox" && issue.severity === "warning",
+          ).length ?? 0}
+          maintainRekordboxCompatibility={maintainRekordboxCompatibility}
+          rekordboxFallbackFormat={rekordboxFallbackFormat}
+          onMaintainRekordboxCompatibilityChange={setMaintainRekordboxCompatibility}
+          onRekordboxFallbackFormatChange={setRekordboxFallbackFormat}
+          onPlanAppleMusic={reviewAppleMusicImport}
+          onConfirmAppleMusic={confirmAppleMusicImport}
+          onCancelAppleMusic={cancelAppleMusicImport}
+          onExportDjBundle={exportAllDjFormats}
+          onExportM3u8={exportAllPlaylists}
+          onExportMp3={exportAllMp3Folders}
+        />
+      </ExportDialog>
 
       <footer className="mx-auto flex max-w-[1480px] flex-col justify-between gap-3 border-t border-line px-5 py-7 text-[11px] text-mist/45 sm:flex-row lg:px-8">
         <span>Sequence · V0.2 organization pipeline</span>

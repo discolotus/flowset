@@ -6,6 +6,7 @@ import {
   buildExportCompatibilityManifest,
   buildRekordboxXml,
   formatCompatibilityReport,
+  planRekordboxCompatibility,
 } from "./djExport";
 import type { RecipeOutput, Track } from "./types";
 
@@ -52,6 +53,32 @@ const alpha = makeTrack("alpha", "Alpha");
 const beta = makeTrack("beta", "Beta");
 
 describe("Rekordbox XML export", () => {
+  it("plans one converted copy per unique unsupported source and remaps repeated entries", () => {
+    const opus = makeTrack("opus", "Opus source");
+    const flac = makeTrack("flac", "FLAC source");
+    const plan = planRekordboxCompatibility({
+      outputs: [
+        makeOutput("one", "One", [opus, flac, opus]),
+        makeOutput("two", "Two", [opus]),
+      ],
+      localAudioPaths: {
+        opus: "/Music/Album/source.opus",
+        flac: "/Music/Album/source.flac",
+      },
+      libraryRootPath: "/Music",
+      fallbackFormat: "mp3",
+    });
+
+    expect(plan.conversions).toEqual([expect.objectContaining({
+      sourcePath: "/Music/Album/source.opus",
+      placeholderPath: "/__SEQUENCE_REKORDBOX_COMPATIBILITY__/00001.mp3",
+    })]);
+    expect(plan.localAudioPaths.opus).toBe(
+      "/__SEQUENCE_REKORDBOX_COMPATIBILITY__/00001.mp3",
+    );
+    expect(plan.localAudioPaths.flac).toBe("/Music/Album/source.flac");
+  });
+
   it("preserves exact ordering across multiple playlists and conserves repeated entries", () => {
     const outputs = [
       makeOutput("one", "One", [beta, alpha, beta]),

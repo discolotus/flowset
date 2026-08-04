@@ -29,6 +29,7 @@ jobs:
       - run: uv sync --project apps/api --locked
       - run: uv run --project apps/api ruff check apps/api
       - run: uv run --project apps/api pytest apps/api/tests
+      - run: make test-api-runtime-smoke
 
   native:
     runs-on: macos-latest
@@ -42,4 +43,4 @@ jobs:
       - run: npm ci
       - run: brew install ffmpeg
       - run: make test-native
-      - run: make test-mp3-export-smoke
+      - run: make test-audio-export-smoke

@@ -121,6 +121,23 @@ export interface DjBundleExportResult {
   trackCount: number;
   warningCount: number;
   blockedTargets: CompatibilityTarget[];
+  convertedCount?: number;
+  compatibilityFormat?: RekordboxFallbackFormat;
+}
+
+export type RekordboxFallbackFormat = "flac" | "mp3";
+
+export interface RekordboxCompatibilityConversion {
+  placeholderPath: string;
+  sourcePath: string;
+  title: string;
+  artist: string;
+  album: string;
+}
+
+export interface RekordboxCompatibilityPlan {
+  localAudioPaths: Record<string, string>;
+  conversions: RekordboxCompatibilityConversion[];
 }
 
 export interface DjExportInput {
@@ -137,7 +154,7 @@ interface TargetDefinition {
   extensions: ReadonlySet<string> | null;
 }
 
-const REKORDBOX_EXTENSIONS = new Set([".aac", ".aif", ".aiff", ".flac", ".m4a", ".mp3", ".wav"]);
+export const REKORDBOX_EXTENSIONS = new Set([".aac", ".aif", ".aiff", ".flac", ".m4a", ".mp3", ".wav"]);
 const APPLE_MUSIC_EXTENSIONS = new Set([".aac", ".aif", ".aiff", ".m4a", ".mp3", ".wav"]);
 const DJAY_PRO_EXTENSIONS = new Set([".aac", ".aif", ".aiff", ".flac", ".m4a", ".mp3", ".wav"]);
 
@@ -225,7 +242,7 @@ export function absoluteFileUrl(value: string): string | null {
   return null;
 }
 
-function extensionForPath(value: string | null): string | null {
+export function extensionForPath(value: string | null): string | null {
   if (!value) return null;
   let path = value;
   if (/^file:/i.test(value)) {
@@ -238,6 +255,42 @@ function extensionForPath(value: string | null): string | null {
   const filename = safeDecodeURIComponent(path.replace(/\\/g, "/").split("/").pop() ?? "");
   const dot = filename.lastIndexOf(".");
   return dot > 0 ? filename.slice(dot).toLowerCase() : null;
+}
+
+export function planRekordboxCompatibility({
+  outputs,
+  localAudioPaths,
+  libraryRootPath,
+  fallbackFormat,
+}: {
+  outputs: readonly RecipeOutput[];
+  localAudioPaths: Readonly<Record<string, string>>;
+  libraryRootPath?: string | null;
+  fallbackFormat: RekordboxFallbackFormat;
+}): RekordboxCompatibilityPlan {
+  const remapped = { ...localAudioPaths };
+  const conversionBySource = new Map<string, RekordboxCompatibilityConversion>();
+  for (const output of outputs) {
+    for (const entry of orderedTrackExportEntries(output, localAudioPaths, libraryRootPath)) {
+      const sourcePath = entry.location.localPath;
+      const extension = extensionForPath(sourcePath);
+      if (!sourcePath || !extension || REKORDBOX_EXTENSIONS.has(extension)) continue;
+      let conversion = conversionBySource.get(sourcePath);
+      if (!conversion) {
+        const position = conversionBySource.size + 1;
+        conversion = {
+          placeholderPath: `/__SEQUENCE_REKORDBOX_COMPATIBILITY__/${String(position).padStart(5, "0")}.${fallbackFormat}`,
+          sourcePath,
+          title: entry.track.name,
+          artist: entry.track.artist,
+          album: entry.track.album,
+        };
+        conversionBySource.set(sourcePath, conversion);
+      }
+      remapped[entry.track.id] = conversion.placeholderPath;
+    }
+  }
+  return { localAudioPaths: remapped, conversions: [...conversionBySource.values()] };
 }
 
 function issueFor(
@@ -653,11 +706,34 @@ export async function exportDjBundle({
   libraryRootPath,
   bundleName,
   nativeApp,
-}: DjExportInput & { nativeApp: boolean }): Promise<DjBundleExportResult> {
+  maintainRekordboxCompatibility = false,
+  rekordboxFallbackFormat = "flac",
+}: DjExportInput & {
+  nativeApp: boolean;
+  maintainRekordboxCompatibility?: boolean;
+  rekordboxFallbackFormat?: RekordboxFallbackFormat;
+}): Promise<DjBundleExportResult> {
   if (outputs.length === 0) throw new Error("There are no playlists to export.");
+  const compatibilityPlan = maintainRekordboxCompatibility
+    ? planRekordboxCompatibility({
+        outputs,
+        localAudioPaths,
+        libraryRootPath,
+        fallbackFormat: rekordboxFallbackFormat,
+      })
+    : { localAudioPaths: { ...localAudioPaths }, conversions: [] };
+  if (compatibilityPlan.conversions.length > 0 && !nativeApp) {
+    throw new Error("Rekordbox-compatible audio conversion requires the Mac desktop app.");
+  }
+  if (
+    compatibilityPlan.conversions.length > 0
+    && (!libraryRootPath || !libraryRootPath.startsWith("/"))
+  ) {
+    throw new Error("Choose a local music library before converting audio for Rekordbox.");
+  }
   const bundle = buildDjExportBundle({
     outputs,
-    localAudioPaths,
+    localAudioPaths: compatibilityPlan.localAudioPaths,
     libraryRootPath,
     bundleName,
   });
@@ -694,14 +770,23 @@ export async function exportDjBundle({
   }
 
   const folderName = safeBaseName(bundleName ?? "Sequence DJ export");
-  const written = await invoke<{ directory: string; paths: string[] }>(
-    "write_export_bundle",
-    {
-      directory: selectedDirectory,
-      bundleName: folderName,
-      files: bundle.files.map(({ filename, contents }) => ({ filename, contents })),
-    },
-  );
+  const command = compatibilityPlan.conversions.length > 0
+    ? "write_rekordbox_compatible_bundle"
+    : "write_export_bundle";
+  const written = await invoke<{
+    directory: string;
+    paths: string[];
+    convertedCount?: number;
+  }>(command, {
+    directory: selectedDirectory,
+    bundleName: folderName,
+    files: bundle.files.map(({ filename, contents }) => ({ filename, contents })),
+    ...(compatibilityPlan.conversions.length > 0 ? {
+      libraryRoot: libraryRootPath,
+      fallbackFormat: rekordboxFallbackFormat,
+      conversions: compatibilityPlan.conversions,
+    } : {}),
+  });
   if (!written || typeof written.directory !== "string" || !Array.isArray(written.paths)) {
     throw new Error("The native app did not confirm the DJ bundle export.");
   }
@@ -709,6 +794,10 @@ export async function exportDjBundle({
     cancelled: false,
     directory: written.directory,
     paths: written.paths,
+    convertedCount: written.convertedCount ?? 0,
+    compatibilityFormat: compatibilityPlan.conversions.length > 0
+      ? rekordboxFallbackFormat
+      : undefined,
     ...baseResult,
   };
 }

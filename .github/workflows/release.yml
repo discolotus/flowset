@@ -38,7 +38,8 @@ jobs:
           make test
           make lint
           make build
-          make test-mp3-export-smoke
+          make test-api-runtime-smoke
+          make test-audio-export-smoke
 
       - name: Package unsigned preview
         env:
@@ -48,6 +49,12 @@ jobs:
           ./scripts/package_macos_release.sh \
             --version "$RELEASE_VERSION" \
             --unsigned
+
+      - name: Smoke test packaged API sidecar
+        run: |
+          python3 scripts/smoke_test_api_runtime.py \
+            --sidecar "src-tauri/target/release/bundle/macos/Playlist Optimizer.app/Contents/MacOS/playlist-optimizer-api" \
+            --model-dir "src-tauri/target/release/bundle/macos/Playlist Optimizer.app/Contents/Resources/models/essentia"
 
       - name: Generate Homebrew cask
         env:
@@ -89,8 +96,9 @@ jobs:
           Verification performed by CI:
 
           - web, API, and native test suites;
+          - source and packaged desktop API behavior over real loopback HTTP;
           - lint and production web build;
-          - real FFmpeg/FFprobe MP3 export from MP3, FLAC, Opus, and DFF fixtures;
+          - real FFmpeg/FFprobe MP3 export plus Rekordbox-compatible Opus-to-FLAC/MP3 export;
           - strict recursive code-signature verification;
           - bundle identifier, architecture, model count, and license payload checks.
 
