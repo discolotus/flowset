@@ -16,7 +16,7 @@ if [ -n "${GITHUB_PATH:-}" ]; then
   echo "$node_bin" >>"$GITHUB_PATH"
 fi
 
-rustup toolchain install 1.94.0 --profile minimal
+rustup toolchain install 1.94.0 --profile minimal --component rustfmt --component clippy
 rustup default 1.94.0
 uv python install 3.12
 
