@@ -36,8 +36,12 @@ make setup
 make test
 make lint
 make build
-make test-mp3-export-smoke
+make test-api-runtime-smoke
+make test-audio-export-smoke
 ./scripts/package_macos_release.sh --version 0.1.0-preview.1 --unsigned
+python3 scripts/smoke_test_api_runtime.py \
+  --sidecar "src-tauri/target/release/bundle/macos/Playlist Optimizer.app/Contents/MacOS/playlist-optimizer-api" \
+  --model-dir "src-tauri/target/release/bundle/macos/Playlist Optimizer.app/Contents/Resources/models/essentia"
 ./scripts/validate_macos_release.sh \
   dist/release/Playlist-Optimizer-0.1.0-preview.1-arm64.zip \
   --allow-unsigned
@@ -52,8 +56,9 @@ have its extracted native libraries signed consistently before library validatio
 ## CI release
 
 `.github/workflows/release.yml` runs on an Apple-silicon `macos-15` runner. A tag matching
-`v*-preview.*` runs the full web, API, native, and real FFmpeg MP3-export checks before publishing a
-GitHub prerelease. The job also generates and uploads the cask.
+`v*-preview.*` runs the full web, API, native, real loopback HTTP, and real FFmpeg export checks
+before publishing a GitHub prerelease. After packaging, the same HTTP smoke scenario runs against
+the frozen API executable inside the `.app`. The job also generates and uploads the cask.
 
 The workflow deliberately refuses to publish any other tag while Apple signing is unavailable.
 This prevents an unsigned artifact from being presented as stable.
@@ -93,8 +98,10 @@ The release is not complete until a fresh cask installation proves all of the fo
 
 1. Homebrew downloads the public GitHub artifact and verifies its checksum.
 2. `/Applications/Playlist Optimizer.app` passes `codesign --verify --deep --strict`.
-3. The app launches and its packaged API answers `/api/v1/health`.
-4. The real FFmpeg smoke test exports MP3 from MP3, FLAC, Opus, and DFF inputs.
+3. The packaged API handles health, capabilities, recipe preview, local-folder import, ranged audio
+   preview, and traversal rejection over its real loopback HTTP boundary.
+4. The real FFmpeg smoke tests export MP3 from MP3, FLAC, Opus, and DFF inputs and transcode Opus
+   to both FLAC and MP3 for Rekordbox compatibility.
 5. FFprobe and Mutagen confirm audio validity and canonical title, artist, album, disc, and track
    tags in the exported files.
 6. The app is uninstalled and reinstalled once to catch hidden local-build dependencies.

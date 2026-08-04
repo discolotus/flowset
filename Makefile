@@ -1,4 +1,4 @@
-.PHONY: setup setup-essentia setup-essentia-models dev test test-native test-mp3-export-smoke lint build desktop-sidecar desktop-build release-preview
+.PHONY: setup setup-essentia setup-essentia-models dev test test-native test-api-runtime-smoke test-audio-export-smoke test-mp3-export-smoke lint build desktop-sidecar desktop-build release-preview
 
 setup:
 	npm install
@@ -22,11 +22,18 @@ test-native:
 	./scripts/prepare_native_test.sh
 	cargo test --manifest-path src-tauri/Cargo.toml --lib --locked
 
-test-mp3-export-smoke:
+test-api-runtime-smoke:
+	cd apps/api && UV_CACHE_DIR=.uv-cache uv run python ../../scripts/smoke_test_api_runtime.py
+
+test-audio-export-smoke:
 	npm run build --workspace @playlist-optimizer/web
 	./scripts/prepare_native_test.sh
 	cargo test --manifest-path src-tauri/Cargo.toml --lib --locked \
 		mp3_export::tests::smoke_ -- --ignored --nocapture
+	cargo test --manifest-path src-tauri/Cargo.toml --lib --locked \
+		rekordbox_export::tests::smoke_ -- --ignored --nocapture
+
+test-mp3-export-smoke: test-audio-export-smoke
 
 lint:
 	npm run lint
