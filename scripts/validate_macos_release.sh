@@ -36,7 +36,7 @@ case "$input" in
   *.zip)
     tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/playlist-optimizer-validate.XXXXXX")
     ditto -x -k "$input" "$tmp_dir"
-    app="$tmp_dir/Playlist Optimizer.app"
+    app="$tmp_dir/Flowset.app"
     ;;
   *.app)
     app=$input

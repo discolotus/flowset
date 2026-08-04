@@ -61,9 +61,9 @@ const paths = {
 function report(): Mp3ExportReport {
   return {
     cancelled: false,
-    directory: "/Exports/Sequence",
-    manifestPath: "/Exports/Sequence/manifest.json",
-    reportPath: "/Exports/Sequence/report.txt",
+    directory: "/Exports/Flowset",
+    manifestPath: "/Exports/Flowset/manifest.json",
+    reportPath: "/Exports/Flowset/report.txt",
     playlistCount: 1,
     trackCount: 3,
     copiedCount: 1,
@@ -86,7 +86,7 @@ describe("MP3 folder export", () => {
 
   it("preserves playlist order, duplicate entries, group labels, and one-based positions", () => {
     const request = buildMp3ExportRequest({
-      exportName: "Sequence",
+      exportName: "Flowset",
       requestId: "request-1",
       outputs: [output, { ...output, id: "second", name: "Second" }],
       localAudioPaths: paths,
@@ -95,7 +95,7 @@ describe("MP3 folder export", () => {
 
     expect(request).toMatchObject({
       requestId: "request-1",
-      exportName: "Sequence",
+      exportName: "Flowset",
       libraryRoot: "/Music",
     });
     expect(request.playlists.map(({ playlistPosition, name }) => ({ playlistPosition, name })))
@@ -156,7 +156,7 @@ describe("MP3 folder export", () => {
 
   it("requires a selected absolute library root", () => {
     expect(() => buildMp3ExportRequest({
-      exportName: "Sequence",
+      exportName: "Flowset",
       outputs: [output],
       localAudioPaths: paths,
       libraryRootPath: null,
@@ -165,7 +165,7 @@ describe("MP3 folder export", () => {
 
   it("subscribes before invoking, filters progress by request, and removes the listener", async () => {
     const request = buildMp3ExportRequest({
-      exportName: "Sequence",
+      exportName: "Flowset",
       requestId: "request-1",
       outputs: [output],
       localAudioPaths: paths,
@@ -219,7 +219,7 @@ describe("MP3 folder export", () => {
 
   it("rejects a destination inside the source library before invoking native code", async () => {
     const request = buildMp3ExportRequest({
-      exportName: "Sequence",
+      exportName: "Flowset",
       requestId: "request-1",
       outputs: [output],
       localAudioPaths: paths,

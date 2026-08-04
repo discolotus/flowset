@@ -765,7 +765,7 @@ export default function App() {
         outputs: preview.outputs,
         localAudioPaths,
         libraryRootPath,
-        bundleName: `Sequence — ${recipeName}`,
+        bundleName: `Flowset — ${recipeName}`,
         nativeApp,
         maintainRekordboxCompatibility,
         rekordboxFallbackFormat,
@@ -816,7 +816,7 @@ export default function App() {
     });
     try {
       const report = await exportMp3Folders({
-        exportName: `Sequence — ${recipeName}`,
+        exportName: `Flowset — ${recipeName}`,
         outputs: preview.outputs,
         localAudioPaths,
         libraryRootPath,
@@ -880,7 +880,7 @@ export default function App() {
     reviewedAppleMusicRevision.current = null;
     try {
       const request = buildAppleMusicImportRequest({
-        folderName: `Sequence — ${recipeName}`,
+        folderName: `Flowset — ${recipeName}`,
         outputs: preview.outputs,
         localAudioPaths,
         libraryRootPath,
@@ -1310,9 +1310,9 @@ export default function App() {
       <header className="sticky top-0 z-30 border-b border-line/80 bg-ink/90 backdrop-blur-xl">
         <nav className="mx-auto flex max-w-[1480px] items-center justify-between px-5 py-4 lg:px-8" aria-label="Primary navigation">
           <div className="flex items-center gap-3">
-            <span className="brand-mark" aria-hidden="true">S</span>
+            <img className="brand-mark" src="/flowset-icon.png" alt="" />
             <div>
-              <p className="font-display text-sm font-semibold tracking-tight">Sequence</p>
+              <p className="font-display text-sm font-semibold tracking-tight">Flowset</p>
               <p className="text-[9px] uppercase tracking-[0.2em] text-mist/45">Playlist laboratory</p>
             </div>
           </div>
@@ -1731,7 +1731,7 @@ export default function App() {
       </ExportDialog>
 
       <footer className="mx-auto flex max-w-[1480px] flex-col justify-between gap-3 border-t border-line px-5 py-7 text-[11px] text-mist/45 sm:flex-row lg:px-8">
-        <span>Sequence · V0.2 organization pipeline</span>
+        <span>Flowset · V0.2 organization pipeline</span>
         <span>
           Source playlists remain read-only · {featureProviders.find(({ id }) => id === featureProvider)?.display_name ?? featureProvider} selected
         </span>

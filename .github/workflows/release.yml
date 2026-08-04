@@ -53,15 +53,15 @@ jobs:
       - name: Smoke test packaged API sidecar
         run: |
           python3 scripts/smoke_test_api_runtime.py \
-            --sidecar "src-tauri/target/release/bundle/macos/Playlist Optimizer.app/Contents/MacOS/playlist-optimizer-api" \
-            --model-dir "src-tauri/target/release/bundle/macos/Playlist Optimizer.app/Contents/Resources/models/essentia"
+            --sidecar "src-tauri/target/release/bundle/macos/Flowset.app/Contents/MacOS/playlist-optimizer-api" \
+            --model-dir "src-tauri/target/release/bundle/macos/Flowset.app/Contents/Resources/models/essentia"
 
       - name: Generate Homebrew cask
         env:
           RELEASE_VERSION: ${{ github.ref_name }}
         run: |
           RELEASE_VERSION=${RELEASE_VERSION#v}
-          ARTIFACT="dist/release/Playlist-Optimizer-${RELEASE_VERSION}-arm64.zip"
+          ARTIFACT="dist/release/Flowset-${RELEASE_VERSION}-arm64.zip"
           SHA256=$(shasum -a 256 "$ARTIFACT" | cut -d ' ' -f 1)
           ./scripts/generate_homebrew_cask.sh \
             --version "$RELEASE_VERSION" \
@@ -74,7 +74,7 @@ jobs:
         run: |
           RELEASE_VERSION=${RELEASE_VERSION#v}
           cat >dist/release/RELEASE_NOTES.md <<EOF
-          ## Playlist Optimizer ${RELEASE_VERSION}
+          ## Flowset ${RELEASE_VERSION}
 
           This is an unsigned, Apple-silicon, non-commercial preview for macOS 15.2 or newer.
           It is ad-hoc signed but not Apple-notarized. macOS will therefore require an explicit
@@ -111,8 +111,8 @@ jobs:
         with:
           name: playlist-optimizer-${{ github.ref_name }}-arm64
           path: |
-            dist/release/Playlist-Optimizer-*.zip
-            dist/release/Playlist-Optimizer-*.zip.sha256
+            dist/release/Flowset-*.zip
+            dist/release/Flowset-*.zip.sha256
             dist/release/playlist-optimizer.rb
             dist/release/RELEASE_NOTES.md
           if-no-files-found: error
@@ -122,10 +122,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            dist/release/Playlist-Optimizer-*.zip \
-            dist/release/Playlist-Optimizer-*.zip.sha256 \
+            dist/release/Flowset-*.zip \
+            dist/release/Flowset-*.zip.sha256 \
             dist/release/playlist-optimizer.rb \
             --prerelease \
             --verify-tag \
-            --title "Playlist Optimizer ${GITHUB_REF_NAME#v} (unsigned preview)" \
+            --title "Flowset ${GITHUB_REF_NAME#v} (unsigned preview)" \
             --notes-file dist/release/RELEASE_NOTES.md

@@ -161,7 +161,7 @@ where
                 .filter(|path| ffmpeg_supports_high_quality_mp3(path))
                 .or_else(resolve_ffmpeg)
                 .ok_or_else(|| {
-                    "FFmpeg with the libmp3lame encoder is required to normalize MP3 tags and convert non-MP3 tracks at maximum MP3 quality. Install a compatible FFmpeg build or configure SEQUENCE_FFMPEG_PATH, then try again. Existing MP3 audio is stream-copied without re-encoding."
+                    "FFmpeg with the libmp3lame encoder is required to normalize MP3 tags and convert non-MP3 tracks at maximum MP3 quality. Install a compatible FFmpeg build or configure FLOWSET_FFMPEG_PATH, then try again. Existing MP3 audio is stream-copied without re-encoding."
                         .to_owned()
                 })?,
         )
@@ -445,7 +445,7 @@ fn prepare_export(
         });
     }
 
-    let clean_export_name = sanitize_component(export_name, "Sequence MP3 export")?;
+    let clean_export_name = sanitize_component(export_name, "Flowset MP3 export")?;
     Ok(PreparedExport {
         parent,
         root_name: fit_utf8(&format!("{clean_export_name} — MP3"), MAX_COMPONENT_BYTES),
@@ -740,7 +740,11 @@ fn ffmpeg_supports_high_quality_mp3(path: &Path) -> bool {
 
 pub(crate) fn resolve_ffmpeg() -> Option<PathBuf> {
     let mut candidates = Vec::new();
-    for variable in ["SEQUENCE_FFMPEG_PATH", "PLAYLIST_OPTIMIZER_FFMPEG_PATH"] {
+    for variable in [
+        "FLOWSET_FFMPEG_PATH",
+        "SEQUENCE_FFMPEG_PATH",
+        "PLAYLIST_OPTIMIZER_FFMPEG_PATH",
+    ] {
         if let Some(value) = env::var_os(variable) {
             candidates.push(PathBuf::from(value));
         }
@@ -810,7 +814,7 @@ fn write_manifest(path: &Path, report: &Mp3ExportReport) -> Result<(), String> {
 
 fn write_text_report(path: &Path, report: &Mp3ExportReport) -> Result<(), String> {
     let mut text = String::new();
-    text.push_str("Sequence MP3 export\n");
+    text.push_str("Flowset MP3 export\n");
     text.push_str(&format!(
         "{} playlists · {} requested tracks · {} copied · {} transcoded · {} failed\n\n",
         report.playlist_count,

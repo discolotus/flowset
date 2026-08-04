@@ -5,7 +5,7 @@
 
 ## Context
 
-Sequence can organize playlists backed by local MP3, FLAC, AAC, Opus, and other audio files, but
+Flowset can organize playlists backed by local MP3, FLAC, AAC, Opus, and other audio files, but
 Spotify's Web API cannot upload those bytes or add local files to a playlist. It can only add
 Spotify catalog URIs. Local filenames also do not establish catalog identity: edits, remasters,
 live recordings, and extended mixes can share similar text while representing different tracks.
@@ -98,7 +98,7 @@ review and requires a new dry run.
 - A directory can become one or more real Spotify playlists when its tracks have reviewed catalog
   matches, without copying local audio to Spotify.
 - Users can understand exactly which files cannot be represented in Spotify before mutation.
-- Numbered playlist names approximate folder/order structure, but Sequence cannot reproduce Spotify
+- Numbered playlist names approximate folder/order structure, but Flowset cannot reproduce Spotify
   client playlist folders through the Web API.
 - Reconnection after restart is an explicit initial limitation. Persisting encrypted refresh tokens
   requires a separate threat model and product decision.

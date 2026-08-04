@@ -92,7 +92,7 @@ export function buildAppleMusicImportRequest({
     );
   }
   return {
-    folderName: folderName.trim() || "Sequence playlists",
+    folderName: folderName.trim() || "Flowset playlists",
     playlists,
   };
 }

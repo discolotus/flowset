@@ -529,7 +529,7 @@ export function buildRekordboxXml(input: DjExportInput): RekordboxXmlBuildResult
   const lines = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<DJ_PLAYLISTS Version="1.0.0">',
-    '  <PRODUCT Name="Sequence" Version="0.1.0" Company="Sequence"/>',
+    '  <PRODUCT Name="Flowset" Version="0.1.0" Company="Flowset"/>',
     `  <COLLECTION Entries="${collection.size}">`,
   ];
   for (const item of collection.values()) {
@@ -572,7 +572,7 @@ export function buildRekordboxXml(input: DjExportInput): RekordboxXmlBuildResult
 
 export function formatCompatibilityReport(manifest: ExportCompatibilityManifest): string {
   const lines = [
-    "Sequence DJ export compatibility report",
+    "Flowset DJ export compatibility report",
     `Generated: ${manifest.generated_at}`,
     "",
     `${manifest.playlist_count} playlist(s), ${manifest.playlist_track_count} ordered track entries, ${manifest.unique_local_file_count} unique local files.`,
@@ -607,7 +607,7 @@ function safeBaseName(name: string): string {
     .replace(/[\\/:*?"<>|]/g, "-")
     .replace(/\s+/g, " ")
     .replace(/[. ]+$/g, "")
-    .trim() || "Sequence DJ export";
+    .trim() || "Flowset DJ export";
 }
 
 function uniqueM3u8Filenames(outputs: readonly RecipeOutput[]): string[] {
@@ -639,7 +639,7 @@ export function buildDjExportBundle(input: DjExportInput): DjExportBundle {
   const rekordbox = buildRekordboxXml(input);
   const { manifest } = rekordbox;
   const report = formatCompatibilityReport(manifest);
-  const baseName = safeBaseName(input.bundleName ?? "Sequence DJ export");
+  const baseName = safeBaseName(input.bundleName ?? "Flowset DJ export");
   const files: DjExportBundleFile[] = [];
 
   if (manifest.targets.m3u8.status === "ready") {
@@ -769,7 +769,7 @@ export async function exportDjBundle({
     return { cancelled: true, paths: [], ...baseResult };
   }
 
-  const folderName = safeBaseName(bundleName ?? "Sequence DJ export");
+  const folderName = safeBaseName(bundleName ?? "Flowset DJ export");
   const command = compatibilityPlan.conversions.length > 0
     ? "write_rekordbox_compatible_bundle"
     : "write_export_bundle";

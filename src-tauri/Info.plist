@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
     <key>NSAppleEventsUsageDescription</key>
-    <string>Playlist Optimizer creates new Music playlists from local tracks only when you request an import.</string>
+    <string>Flowset creates new Music playlists from local tracks only when you request an import.</string>
 </dict>
 </plist>

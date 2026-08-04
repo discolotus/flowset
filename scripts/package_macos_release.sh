@@ -63,7 +63,7 @@ esac
 cd "$project_root"
 npm run desktop:build
 
-app="$project_root/src-tauri/target/release/bundle/macos/Playlist Optimizer.app"
+app="$project_root/src-tauri/target/release/bundle/macos/Flowset.app"
 [ -d "$app" ] || {
   echo "Tauri did not produce the expected app bundle: $app" >&2
   exit 1
@@ -100,7 +100,7 @@ else
 fi
 
 mkdir -p "$output_dir"
-artifact="$output_dir/Playlist-Optimizer-$version-$arch.zip"
+artifact="$output_dir/Flowset-$version-$arch.zip"
 checksum="$artifact.sha256"
 rm -f "$artifact" "$checksum"
 ditto -c -k --sequesterRsrc --keepParent "$app" "$artifact"

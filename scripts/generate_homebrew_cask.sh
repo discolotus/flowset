@@ -8,7 +8,7 @@ usage() {
 version=
 sha256=
 output=
-url='https://github.com/discolotus/spotify-playlist-optimizer/releases/download/v#{version}/Playlist-Optimizer-#{version}-arm64.zip'
+url='https://github.com/discolotus/spotify-playlist-optimizer/releases/download/v#{version}/Flowset-#{version}-arm64.zip'
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -64,7 +64,7 @@ cask "playlist-optimizer" do
   sha256 "$sha256"
 
   url "$url"
-  name "Playlist Optimizer"
+  name "Flowset"
   desc "Organize local music and export inspectable DJ-ready playlists"
   homepage "https://github.com/discolotus/spotify-playlist-optimizer"
 
@@ -72,7 +72,7 @@ cask "playlist-optimizer" do
   depends_on formula: "ffmpeg"
   depends_on macos: :sequoia
 
-  app "Playlist Optimizer.app"
+  app "Flowset.app"
 
   zap trash: [
     "~/Library/Application Support/com.discolotus.playlist-optimizer",

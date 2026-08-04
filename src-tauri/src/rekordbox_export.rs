@@ -127,7 +127,7 @@ fn write_rekordbox_compatible_bundle_core(
     validate_files(&files)?;
     let prepared = prepare_conversions(conversions, &library, format)?;
     let ffmpeg = ffmpeg_override.or_else(resolve_ffmpeg).ok_or_else(|| {
-        "FFmpeg is required to convert Rekordbox-incompatible audio. Install a compatible FFmpeg build or configure SEQUENCE_FFMPEG_PATH, then try again."
+        "FFmpeg is required to convert Rekordbox-incompatible audio. Install a compatible FFmpeg build or configure FLOWSET_FFMPEG_PATH, then try again."
             .to_owned()
     })?;
 
