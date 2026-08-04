@@ -472,17 +472,21 @@ export function OutputPlaylistCard({
               ))}
             </select>
           </label>
-          <button
-            type="button"
-            className="export-button"
-            disabled={exportDisabled || exportState.status === "saving"}
-            title={exportDisabled
-              ? "Wait for the latest playlist preview before exporting"
-              : "Save this ordered playlist as an M3U8 file"}
-            onClick={exportPlaylist}
-          >
-            {exportState.status === "saving" ? "Exporting…" : "Export M3U8"}
-          </button>
+          <details className="output-action-menu">
+            <summary aria-label={`More actions for ${output.name}`}>•••</summary>
+            <div>
+              <button
+                type="button"
+                disabled={exportDisabled || exportState.status === "saving"}
+                title={exportDisabled
+                  ? "Wait for the latest playlist preview before exporting"
+                  : "Save this ordered playlist as an M3U8 file"}
+                onClick={exportPlaylist}
+              >
+                {exportState.status === "saving" ? "Exporting…" : "Export M3U8"}
+              </button>
+            </div>
+          </details>
           {exportState.status !== "idle" && exportState.status !== "saving" && (
             <p
               className={`export-feedback ${exportState.status}`}
