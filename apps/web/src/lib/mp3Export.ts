@@ -227,7 +227,7 @@ export function buildMp3ExportRequest({
 
   return {
     requestId: requestId ?? newRequestId(),
-    exportName: exportName.trim() || "Sequence MP3 export",
+    exportName: exportName.trim() || "Flowset MP3 export",
     libraryRoot,
     playlists,
   };

@@ -1,6 +1,6 @@
 # Third-party notices
 
-Playlist Optimizer's original source code is licensed under the MIT License. The packaged macOS
+Flowset's original source code is licensed under the MIT License. The packaged macOS
 preview also contains third-party components whose licenses continue to apply.
 
 ## Essentia and model files
@@ -8,7 +8,7 @@ preview also contains third-party components whose licenses continue to apply.
 The frozen API sidecar includes `essentia-tensorflow` 2.1 beta 6 dev 1389. Essentia is distributed
 under the GNU Affero General Public License version 3 for non-commercial applications. The release
 packager copies the license text shipped by the installed Python distribution into
-`Playlist Optimizer.app/Contents/Resources/licenses/ESSENTIA-AGPL-3.0.txt`.
+`Flowset.app/Contents/Resources/licenses/ESSENTIA-AGPL-3.0.txt`.
 
 The nine bundled Essentia model and metadata files are provided by the Music Technology Group,
 Universitat Pompeu Fabra. Their published terms are Creative Commons

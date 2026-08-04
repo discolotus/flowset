@@ -23,9 +23,7 @@ fn state_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_config_dir()
         .map(|directory| directory.join(WORKSPACE_STATE_FILENAME))
-        .map_err(|error| {
-            format!("Could not locate the Playlist Optimizer app-data folder: {error}")
-        })
+        .map_err(|error| format!("Could not locate the Flowset app-data folder: {error}"))
 }
 
 fn read_workspace_state_file(path: &Path) -> Result<Value, String> {
@@ -67,9 +65,8 @@ fn write_workspace_state_file(path: &Path, state: &Value) -> Result<(), String> 
     let parent = path
         .parent()
         .ok_or_else(|| "Workspace history has no app-data directory.".to_owned())?;
-    fs::create_dir_all(parent).map_err(|error| {
-        format!("Could not create the Playlist Optimizer app-data folder: {error}")
-    })?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("Could not create the Flowset app-data folder: {error}"))?;
     let temporary = parent.join(format!(
         ".{WORKSPACE_STATE_FILENAME}.tmp-{}",
         std::process::id()

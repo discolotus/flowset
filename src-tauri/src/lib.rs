@@ -365,7 +365,7 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while building Playlist Optimizer");
+        .expect("error while building Flowset");
 
     app.run(|app_handle, event| {
         if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
@@ -500,34 +500,34 @@ mod tests {
     fn dj_bundle_writes_mixed_formats_into_a_unique_folder() {
         let directory = unique_test_path("dj-bundle-parent").with_extension("");
         fs::create_dir(&directory).expect("test directory should be created");
-        fs::create_dir(directory.join("Sequence DJ export"))
+        fs::create_dir(directory.join("Flowset DJ export"))
             .expect("existing bundle fixture should be created");
 
         let result = write_export_bundle(
             directory.to_string_lossy().into_owned(),
-            "Sequence DJ export".into(),
+            "Flowset DJ export".into(),
             vec![
                 ExportBundleFileRequest {
                     filename: "Low Arousal.m3u8".into(),
                     contents: "#EXTM3U\n/Music/one.mp3\n".into(),
                 },
                 ExportBundleFileRequest {
-                    filename: "Sequence - Rekordbox.xml".into(),
+                    filename: "Flowset - Rekordbox.xml".into(),
                     contents: "<?xml version=\"1.0\"?><DJ_PLAYLISTS/>\n".into(),
                 },
                 ExportBundleFileRequest {
-                    filename: "Sequence - manifest.json".into(),
+                    filename: "Flowset - manifest.json".into(),
                     contents: "{\"playlistCount\":1}\n".into(),
                 },
                 ExportBundleFileRequest {
-                    filename: "Sequence - compatibility.txt".into(),
+                    filename: "Flowset - compatibility.txt".into(),
                     contents: "All tracks accounted for.\n".into(),
                 },
             ],
         )
         .expect("DJ bundle should be written");
 
-        assert!(result.directory.ends_with("Sequence DJ export (2)"));
+        assert!(result.directory.ends_with("Flowset DJ export (2)"));
         assert_eq!(result.paths.len(), 4);
         for path in &result.paths {
             assert!(PathBuf::from(path).is_file());
@@ -542,7 +542,7 @@ mod tests {
         fs::create_dir(&directory).expect("test directory should be created");
         let error = write_export_bundle(
             directory.to_string_lossy().into_owned(),
-            "Sequence DJ export".into(),
+            "Flowset DJ export".into(),
             vec![
                 ExportBundleFileRequest {
                     filename: "Playlist.m3u8".into(),

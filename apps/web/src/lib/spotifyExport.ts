@@ -74,7 +74,7 @@ export function spotifyExportPreflight(
   if (outputs.length > SPOTIFY_UI_PLAYLIST_LIMIT) {
     issues.push({
       code: "too_many_playlists",
-      message: `This recipe creates ${outputs.length} playlists, above Sequence's ${SPOTIFY_UI_PLAYLIST_LIMIT}-playlist factor-grid maximum. Reduce one or more factor levels before matching.`,
+      message: `This recipe creates ${outputs.length} playlists, above Flowset's ${SPOTIFY_UI_PLAYLIST_LIMIT}-playlist factor-grid maximum. Reduce one or more factor levels before matching.`,
       outputIds: outputs.map(({ id }) => id),
     });
   }
@@ -271,7 +271,7 @@ export function buildSpotifyCreatePlan({
       request: {
         position: outputIndex + 1,
         name: output.name.trim(),
-        description: "Created by Sequence from an ordered local playlist.",
+        description: "Created by Flowset from an ordered local playlist.",
         tracks,
       },
       summary: {

@@ -592,7 +592,7 @@ export function SpotifyDestination({
               </label>
               <div className="spotify-setup-copy">
                 <p>Add this exact redirect URI to the allowlist in your Spotify developer app.</p>
-                <small>Sequence stores only this public Client ID. No client secret is requested or displayed.</small>
+                <small>Flowset stores only this public Client ID. No client secret is requested or displayed.</small>
               </div>
               <div className="apple-music-review-actions">
                 {connection?.configured && (
@@ -632,7 +632,7 @@ export function SpotifyDestination({
                 <div className="spotify-playlist-plan">
                   <div>
                     <strong>{outputs.length} numbered playlist{outputs.length === 1 ? "" : "s"}</strong>
-                    <small>Spotify has no playlist folders, so Sequence prefixes names to preserve their order.</small>
+                    <small>Spotify has no playlist folders, so Flowset prefixes names to preserve their order.</small>
                   </div>
                   <ol>
                     {outputs.map((output, index) => (

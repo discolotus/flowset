@@ -1,12 +1,12 @@
-# Spotify Playlist Optimizer
+# Flowset
 
-An early full-stack foundation for **Sequence**, a web app that turns one or more source
+**Flowset** is a local-first app that turns one or more source
 playlists into clearly defined output playlists using musical-feature distributions, nested
 groups, and scoped sorting—without modifying the originals.
 
 ## How organization works
 
-![Top-down Sequence workflow showing twelve analyzed tracks split into low, medium, and high energy playlists, grouped into danceability sections, and sorted by BPM inside each section](docs/assets/playlist-organization-pipeline.png)
+![Top-down Flowset workflow showing twelve analyzed tracks split into low, medium, and high energy playlists, grouped into danceability sections, and sorted by BPM inside each section](docs/assets/playlist-organization-pipeline.png)
 
 This fictional example conserves all 12 tracks while making each operation visible: energy creates
 three separate basis playlists, danceability creates contiguous sections inside each playlist,
@@ -15,14 +15,14 @@ and BPM sorting happens independently inside every section. The
 
 ## Demo
 
-![Sequence demo showing fictional source selection, recipe editing, distribution analysis, and ordered playlist previews](docs/assets/sequence-demo.gif)
+![Flowset demo showing fictional source selection, recipe editing, distribution analysis, and ordered playlist previews](docs/assets/sequence-demo.gif)
 
 The demo uses fictional fixture playlists. It changes the energy split from three to four basis
 playlists, then shows the destination choices and complete ordered-track preview.
 
 ## Core organization workflow
 
-Sequence treats playlist organization as a visible, composable pipeline:
+Flowset treats playlist organization as a visible, composable pipeline:
 
 1. **Select inputs:** choose one or multiple source playlists to form a working track pool.
 2. **Inspect a distribution:** choose a feature such as energy or danceability and see its
@@ -139,7 +139,7 @@ provisioned. Portable MP3 transcoding additionally requires an `ffmpeg` executab
 
 ```bash
 npm run desktop:build
-open "src-tauri/target/release/bundle/macos/Playlist Optimizer.app"
+open "src-tauri/target/release/bundle/macos/Flowset.app"
 ```
 
 `desktop:build` installs the locked TensorFlow-enabled Essentia dependency, provisions all nine
@@ -148,8 +148,10 @@ configures the model path automatically and performs no model download at startu
 
 The portable MP3 exporter invokes FFmpeg for both stream-copying existing MP3 audio into a freshly
 tagged container and converting supported non-MP3 sources. The current build checks
-`SEQUENCE_FFMPEG_PATH`, an app-resource location, the Apple Silicon and Intel Homebrew locations,
-and finally the app's `PATH`. The Homebrew preview declares `ffmpeg` as a formula dependency, but
+`FLOWSET_FFMPEG_PATH` (plus the legacy `SEQUENCE_FFMPEG_PATH` and
+`PLAYLIST_OPTIMIZER_FFMPEG_PATH` aliases), an app-resource location, the Apple Silicon and Intel
+Homebrew locations, and finally the app's `PATH`. The Homebrew preview declares `ffmpeg` as a
+formula dependency, but
 the `.app` is not self-contained. A future notarized release must select a pinned,
 architecture-appropriate FFmpeg distribution and complete its source, checksum, codec-license,
 signing, and notarization audit.
@@ -176,7 +178,7 @@ The full [macOS and Homebrew release protocol](docs/macos-homebrew-release.md) d
 checks, clean-install test, tap update, and the remaining Developer ID, hardened-runtime,
 notarization, FFmpeg, and commercial-license gates.
 
-The first Apple Music import requests macOS Automation access. Sequence always validates the
+The first Apple Music import requests macOS Automation access. Flowset always validates the
 complete batch first, creates a uniquely named Music folder, never deletes or replaces an existing
 playlist, and reads the resulting Music track IDs back to verify each playlist's order.
 
@@ -289,9 +291,9 @@ filename-only automatic matching unsafe. See
 ## Spotify catalog matching and delivery
 
 Spotify can receive catalog items, not audio files from the local drive. A local track therefore
-must first be matched to a Spotify catalog identity. Sequence prefers an exact ISRC, then reviews
+must first be matched to a Spotify catalog identity. Flowset prefers an exact ISRC, then reviews
 normalized title, artist, duration, and version qualifiers. An ambiguous or unmatched track blocks
-confirmation until the user selects a candidate or explicitly excludes that position. Sequence
+confirmation until the user selects a candidate or explicitly excludes that position. Flowset
 never makes that choice silently, and local audio bytes are never uploaded.
 
 Connection uses Authorization Code with PKCE, the public client ID, a one-time `state`, and an
@@ -305,7 +307,7 @@ Spotify export is a reviewed two-step operation. The first step reports every pr
 ordered catalog match, ambiguity, and omission without changing Spotify. Only a second explicit
 confirmation creates new playlists, private by default unless the user explicitly chooses public.
 Spotify's Web API cannot create or retrieve playlist
-folders, so Sequence preserves output-playlist order with zero-padded names such as
+folders, so Flowset preserves output-playlist order with zero-padded names such as
 `01 - Low Arousal`, `02 - Medium Arousal`, and so on. It appends catalog URIs to
 `POST /playlists/{playlist_id}/items` in canonical preview order, in chunks of no more than 100,
 then reads the playlist items back to compare URI order and count. Any rejected or unverifiable

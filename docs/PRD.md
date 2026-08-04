@@ -1,4 +1,4 @@
-# Product Requirements Document: Spotify Playlist Optimizer
+# Product Requirements Document: Flowset
 
 - Version: 0.2
 - Author: Disco Lotus (Concept)

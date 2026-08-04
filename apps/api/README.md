@@ -1,4 +1,4 @@
-# Playlist Optimizer API
+# Flowset API
 
 FastAPI application containing the provider-neutral track model and deterministic V1
 playlist strategies. Run it from the repository root with `npm run dev:api`.

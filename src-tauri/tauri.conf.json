@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Playlist Optimizer",
+  "productName": "Flowset",
   "version": "0.1.0",
   "identifier": "com.discolotus.playlist-optimizer",
   "build": {
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Playlist Optimizer",
+        "title": "Flowset",
         "width": 1440,
         "height": 960,
         "minWidth": 1000,
