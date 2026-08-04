@@ -10,9 +10,13 @@ const callbacks = {
   onExportDjBundle: vi.fn(),
   onExportM3u8: vi.fn(),
   onExportMp3: vi.fn(),
+  onMaintainRekordboxCompatibilityChange: vi.fn(),
+  onRekordboxFallbackFormatChange: vi.fn(),
 };
 
 const mp3Props = {
+  maintainRekordboxCompatibility: false,
+  rekordboxFallbackFormat: "flac" as const,
   mp3ExportState: { status: "idle" } as const,
   mp3Estimate: {
     trackCount: 92,
@@ -137,6 +141,8 @@ describe("BatchDestinationPanel", () => {
         djBundleState={{ status: "idle" }}
         m3u8State={{ status: "idle" }}
         mp3Estimate={mp3Props.mp3Estimate}
+        maintainRekordboxCompatibility={false}
+        rekordboxFallbackFormat="flac"
         mp3ExportState={{
           status: "complete",
           report: {
@@ -180,5 +186,29 @@ describe("BatchDestinationPanel", () => {
     );
 
     expect(markup).toContain("Requires the Mac desktop app");
+  });
+
+  it("offers opt-in Rekordbox conversion with FLAC or MP3 fallbacks", () => {
+    const markup = renderToStaticMarkup(
+      <BatchDestinationPanel
+        playlistCount={2}
+        trackCount={12}
+        nativeApp
+        appleMusicState={{ status: "idle" }}
+        djBundleState={{ status: "idle" }}
+        m3u8State={{ status: "idle" }}
+        {...mp3Props}
+        maintainRekordboxCompatibility
+        rekordboxFallbackFormat="mp3"
+        rekordboxWarningCount={3}
+        {...callbacks}
+      />,
+    );
+
+    expect(markup).toContain("Maintain Rekordbox compatibility");
+    expect(markup).toContain("FLAC · preserves the decoded signal");
+    expect(markup).toContain("MP3 · 320 kbps");
+    expect(markup).toContain("3 incompatible track entries will use converted MP3 copies");
+    expect(markup).toContain('role="switch"');
   });
 });

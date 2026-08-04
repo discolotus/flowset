@@ -7,6 +7,7 @@ import type {
   Mp3ExportProgress,
   Mp3ExportReport,
 } from "../lib/mp3Export";
+import type { RekordboxFallbackFormat } from "../lib/djExport";
 import type { RecipeOutput } from "../lib/types";
 import { SpotifyDestination } from "./SpotifyDestination";
 
@@ -44,6 +45,10 @@ interface BatchDestinationPanelProps {
   spotifyRevision?: number;
   spotifyLocalSource?: boolean;
   rekordboxWarningCount: number;
+  maintainRekordboxCompatibility: boolean;
+  rekordboxFallbackFormat: RekordboxFallbackFormat;
+  onMaintainRekordboxCompatibilityChange: (enabled: boolean) => void;
+  onRekordboxFallbackFormatChange: (format: RekordboxFallbackFormat) => void;
   onPlanAppleMusic: () => void;
   onConfirmAppleMusic: () => void;
   onCancelAppleMusic: () => void;
@@ -84,6 +89,10 @@ export function BatchDestinationPanel({
   spotifyRevision = 0,
   spotifyLocalSource = false,
   rekordboxWarningCount,
+  maintainRekordboxCompatibility,
+  rekordboxFallbackFormat,
+  onMaintainRekordboxCompatibilityChange,
+  onRekordboxFallbackFormatChange,
   onPlanAppleMusic,
   onConfirmAppleMusic,
   onCancelAppleMusic,
@@ -125,6 +134,36 @@ export function BatchDestinationPanel({
           <span className="export-destination-kicker">Batch Rekordbox handoff</span>
           <h4>DJ bundle</h4>
           <p>Save one folder with Rekordbox XML, ordered M3U8 playlists, and a complete compatibility report.</p>
+          <div className="rekordbox-compatibility-controls">
+            <label className="switch-control">
+              <span>
+                <strong>Maintain Rekordbox compatibility</strong>
+                <small>Convert only unsupported local audio; compatible originals stay referenced in place.</small>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={maintainRekordboxCompatibility}
+                disabled={!nativeApp || djBundleState.status === "working"}
+                onChange={(event) => onMaintainRekordboxCompatibilityChange(event.target.checked)}
+              />
+            </label>
+            {maintainRekordboxCompatibility && (
+              <label className="control-field">
+                <span>Convert unsupported files to</span>
+                <select
+                  value={rekordboxFallbackFormat}
+                  disabled={!nativeApp || djBundleState.status === "working"}
+                  onChange={(event) => onRekordboxFallbackFormatChange(
+                    event.target.value as RekordboxFallbackFormat,
+                  )}
+                >
+                  <option value="flac">FLAC · preserves the decoded signal, larger files</option>
+                  <option value="mp3">MP3 · 320 kbps, smaller and more portable</option>
+                </select>
+              </label>
+            )}
+          </div>
           <button
             type="button"
             className="export-button"
@@ -134,8 +173,13 @@ export function BatchDestinationPanel({
             {djBundleState.status === "working" ? "Building bundle…" : "Export DJ bundle"}
           </button>
           {rekordboxWarningCount > 0 && (
-            <small>{rekordboxWarningCount} format warning{rekordboxWarningCount === 1 ? "" : "s"}; every path remains in the bundle.</small>
+            <small>
+              {maintainRekordboxCompatibility
+                ? `${rekordboxWarningCount} incompatible track ${rekordboxWarningCount === 1 ? "entry will" : "entries will"} use converted ${rekordboxFallbackFormat.toUpperCase()} copies. Originals are untouched.`
+                : `${rekordboxWarningCount} format warning${rekordboxWarningCount === 1 ? "" : "s"}; every original path remains in the bundle.`}
+            </small>
           )}
+          {!nativeApp && <small>Audio conversion requires the Mac desktop app.</small>}
           <ActionMessage state={djBundleState} />
         </article>
 

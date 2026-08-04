@@ -10,29 +10,119 @@ export const NUMERIC_PARAMETERS: Array<{
   label: string;
   shortLabel: string;
   unit: string | null;
+  description: string;
+  interpretation: string;
 }> = [
-  { value: "energy", label: "Energy", shortLabel: "Energy", unit: "score" },
-  { value: "arousal", label: "Arousal", shortLabel: "Arousal", unit: "score" },
-  { value: "aggressiveness", label: "Aggressiveness", shortLabel: "Aggressive", unit: "score" },
-  { value: "party", label: "Party likelihood", shortLabel: "Party", unit: "score" },
-  { value: "relaxed", label: "Relaxed likelihood", shortLabel: "Relaxed", unit: "score" },
-  { value: "danceability", label: "Danceability", shortLabel: "Dance", unit: "score" },
-  { value: "valence", label: "Valence", shortLabel: "Valence", unit: "score" },
-  { value: "tempo", label: "Tempo (BPM)", shortLabel: "BPM", unit: "BPM" },
-  { value: "onset_rate", label: "Onset rate", shortLabel: "Onsets", unit: "onsets/s" },
-  { value: "beat_strength", label: "Beat strength (mean spectral energy)", shortLabel: "Beat", unit: null },
-  { value: "dynamic_complexity", label: "Dynamic complexity", shortLabel: "Dynamics", unit: "dB-like" },
-  { value: "loudness_range", label: "Dynamic range (EBU R128 loudness range)", shortLabel: "Dyn. range", unit: "LU" },
-  { value: "brightness", label: "Brightness (spectral centroid)", shortLabel: "Brightness", unit: "Hz" },
-  { value: "spectral_flux", label: "Spectral flux", shortLabel: "Flux", unit: null },
-  { value: "key_strength", label: "Key strength", shortLabel: "Key str.", unit: null },
-  { value: "acousticness", label: "Acousticness", shortLabel: "Acoustic", unit: "score" },
-  { value: "instrumentalness", label: "Instrumentalness", shortLabel: "Instrumental", unit: "score" },
-  { value: "speechiness", label: "Speechiness", shortLabel: "Speech", unit: "score" },
-  { value: "liveness", label: "Liveness", shortLabel: "Live", unit: "score" },
-  { value: "loudness", label: "Loudness (source scale)", shortLabel: "Loudness", unit: "dB/LUFS" },
-  { value: "release_year", label: "Release year", shortLabel: "Year", unit: null },
-  { value: "duration", label: "Duration", shortLabel: "Length", unit: null },
+  {
+    value: "energy", label: "Energy", shortLabel: "Energy", unit: "score",
+    description: "Perceived intensity and activity, combining cues such as loudness, density, and timbral force.",
+    interpretation: "Lower feels restrained; higher feels forceful and busy.",
+  },
+  {
+    value: "arousal", label: "Arousal", shortLabel: "Arousal", unit: "score",
+    description: "Emotional activation: how calm or excited the music is likely to feel.",
+    interpretation: "Lower is calm or sleepy; higher is alert or excited.",
+  },
+  {
+    value: "aggressiveness", label: "Aggressiveness", shortLabel: "Aggressive", unit: "score",
+    description: "A model estimate of forceful, tense, abrasive, or confrontational musical character.",
+    interpretation: "Lower is gentler; higher is more aggressive.",
+  },
+  {
+    value: "party", label: "Party likelihood", shortLabel: "Party", unit: "score",
+    description: "A model estimate of whether the track resembles music commonly perceived as party-oriented.",
+    interpretation: "Higher means a stronger party-music resemblance, not guaranteed crowd response.",
+  },
+  {
+    value: "relaxed", label: "Relaxed likelihood", shortLabel: "Relaxed", unit: "score",
+    description: "A model estimate of a laid-back, soothing, or low-tension musical character.",
+    interpretation: "Higher means the track is more likely to feel relaxed.",
+  },
+  {
+    value: "danceability", label: "Danceability", shortLabel: "Dance", unit: "score",
+    description: "How suitable the track seems for dancing based on rhythmic stability, pulse, and related cues.",
+    interpretation: "Higher suggests a steadier, more dance-friendly groove.",
+  },
+  {
+    value: "valence", label: "Valence", shortLabel: "Valence", unit: "score",
+    description: "The perceived emotional positivity of the music—separate from how energetic it is.",
+    interpretation: "Lower tends sad, dark, or tense; higher tends happy, bright, or euphoric.",
+  },
+  {
+    value: "tempo", label: "Tempo (BPM)", shortLabel: "BPM", unit: "BPM",
+    description: "The detected musical pulse measured in beats per minute.",
+    interpretation: "Higher BPM means a faster detected pulse; half- and double-time readings can occur.",
+  },
+  {
+    value: "onset_rate", label: "Onset rate", shortLabel: "Onsets", unit: "onsets/s",
+    description: "The average number of newly detected note or percussion attacks per second.",
+    interpretation: "Higher values usually indicate denser or busier musical events.",
+  },
+  {
+    value: "beat_strength", label: "Beat strength (mean spectral energy)", shortLabel: "Beat", unit: null,
+    description: "A raw analyzer magnitude describing average spectral energy around the rhythmic signal.",
+    interpretation: "Use it comparatively within this library; it is not a normalized 0–1 score.",
+  },
+  {
+    value: "dynamic_complexity", label: "Dynamic complexity", shortLabel: "Dynamics", unit: "dB-like",
+    description: "How much short-term loudness and intensity vary throughout a track.",
+    interpretation: "Higher values suggest more internal contrast and movement.",
+  },
+  {
+    value: "loudness_range", label: "Dynamic range (EBU R128 loudness range)", shortLabel: "Dyn. range", unit: "LU",
+    description: "The EBU R128 estimate of long-term loudness variation, measured in Loudness Units.",
+    interpretation: "Higher values mean wider quiet-to-loud contrast across the track.",
+  },
+  {
+    value: "brightness", label: "Brightness (spectral centroid)", shortLabel: "Brightness", unit: "Hz",
+    description: "The frequency-weighted center of the sound spectrum, often heard as tonal brightness.",
+    interpretation: "Higher values usually sound brighter, sharper, or more treble-forward.",
+  },
+  {
+    value: "spectral_flux", label: "Spectral flux", shortLabel: "Flux", unit: null,
+    description: "A raw measure of how quickly the frequency spectrum changes from moment to moment.",
+    interpretation: "Higher values suggest more timbral or textural motion; compare within one provider.",
+  },
+  {
+    value: "key_strength", label: "Key strength", shortLabel: "Key str.", unit: null,
+    description: "How strongly the analyzed pitch profile supports the detected musical key.",
+    interpretation: "Higher means clearer tonal evidence, not that one key is better than another.",
+  },
+  {
+    value: "acousticness", label: "Acousticness", shortLabel: "Acoustic", unit: "score",
+    description: "An estimate of whether the recording sounds predominantly acoustic rather than electronic.",
+    interpretation: "Higher means more acoustic-like evidence.",
+  },
+  {
+    value: "instrumentalness", label: "Instrumentalness", shortLabel: "Instrumental", unit: "score",
+    description: "An estimate of whether a track contains little or no lead vocal content.",
+    interpretation: "Higher means more likely instrumental; wordless vocals can be ambiguous.",
+  },
+  {
+    value: "speechiness", label: "Speechiness", shortLabel: "Speech", unit: "score",
+    description: "An estimate of how much spoken-word-like content is present.",
+    interpretation: "Higher values suggest speech, rap, talk, or narration is more prominent.",
+  },
+  {
+    value: "liveness", label: "Liveness", shortLabel: "Live", unit: "score",
+    description: "An estimate of audience or room cues associated with a live performance.",
+    interpretation: "Higher means stronger live-recording evidence, not a certainty.",
+  },
+  {
+    value: "loudness", label: "Loudness (source scale)", shortLabel: "Loudness", unit: "dB/LUFS",
+    description: "The provider's overall loudness measurement for the track.",
+    interpretation: "Less-negative values are louder; compare only measurements from the same provider and scale.",
+  },
+  {
+    value: "release_year", label: "Release year", shortLabel: "Year", unit: null,
+    description: "The track's release year from its available metadata.",
+    interpretation: "This is catalog metadata, not an audio measurement.",
+  },
+  {
+    value: "duration", label: "Duration", shortLabel: "Length", unit: null,
+    description: "The full track length reported by the source metadata.",
+    interpretation: "Useful for separating short tools or interludes from longer tracks.",
+  },
 ];
 
 export const SORT_PARAMETERS: Array<{ value: SortParameter; label: string }> = [
@@ -58,6 +148,16 @@ export function parameterShortLabel(parameter: NumericParameter | SortParameter)
 
 export function parameterUnit(parameter: NumericParameter): string | null {
   return NUMERIC_PARAMETERS.find((candidate) => candidate.value === parameter)?.unit ?? null;
+}
+
+export function parameterDescription(parameter: NumericParameter): string {
+  return NUMERIC_PARAMETERS.find((candidate) => candidate.value === parameter)?.description
+    ?? "No description is available for this parameter.";
+}
+
+export function parameterInterpretation(parameter: NumericParameter): string {
+  return NUMERIC_PARAMETERS.find((candidate) => candidate.value === parameter)?.interpretation
+    ?? "Compare values within the same provider.";
 }
 
 export function parameterCoverage(

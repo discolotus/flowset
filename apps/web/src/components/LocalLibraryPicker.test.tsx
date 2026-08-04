@@ -71,12 +71,16 @@ describe("LocalLibraryPicker", () => {
         importedPaths={new Set()}
         error={null}
         nativeFolderSelection
+        recentLibraryRoots={["/Volumes/External4TB/Music", "/Users/test/Music"]}
         onSelectNativeFolder={() => undefined}
+        onSelectRecentRoot={() => undefined}
         {...handlers}
       />,
     );
 
     expect(markup).toContain("Choose folder…");
+    expect(markup).toContain("Recent parent folders");
+    expect(markup).toContain("/Volumes/External4TB/Music");
     expect(markup).toContain("Choose a folder to use as your local music library");
   });
 });

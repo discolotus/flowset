@@ -6,6 +6,8 @@ import {
   numericTrackValue,
   NUMERIC_PARAMETERS,
   parameterCoverage,
+  parameterDescription,
+  parameterInterpretation,
   parameterLabel,
   parameterOptionLabel,
   parameterUnit,
@@ -70,6 +72,8 @@ describe("parameter helpers", () => {
     expect(parameterLabel("tempo")).toBe("Tempo (BPM)");
     expect(parameterLabel("brightness")).toBe("Brightness (spectral centroid)");
     expect(parameterUnit("onset_rate")).toBe("onsets/s");
+    expect(parameterDescription("valence")).toContain("emotional positivity");
+    expect(parameterInterpretation("valence")).toContain("sad, dark, or tense");
   });
 
   it("exposes every energy-adjacent metric as a numeric recipe parameter", () => {
