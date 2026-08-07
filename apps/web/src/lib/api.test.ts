@@ -5,6 +5,7 @@ import {
   browseLocalLibrary,
   configureSpotify,
   createSpotifyPlaylists,
+  discoverLocalPlaylists,
   getAudioFeatureProgress,
   getAudioFeatureProviders,
   getSpotifyStatus,
@@ -190,6 +191,37 @@ describe("audio feature provider API", () => {
     expect(JSON.parse(String(options.body))).toEqual({
       source_path: "Sets/Warmup",
       recursive: true,
+    });
+  });
+
+  it("discovers playlist files recursively beneath a root-relative parent", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ playlists: [] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await discoverLocalPlaylists("Playlists/Archived");
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/v1/local-library/playlists?path=Playlists%2FArchived",
+    );
+  });
+
+  it("imports a discovered playlist file by its exact relative path", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await importLocalPlaylist({
+      sourcePath: "Playlists/Archived/Closing Set.m3u8",
+      recursive: false,
+    });
+
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/local-library/import");
+    expect(JSON.parse(String(options.body))).toEqual({
+      source_path: "Playlists/Archived/Closing Set.m3u8",
+      recursive: false,
     });
   });
 

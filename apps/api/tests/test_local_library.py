@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+import playlist_optimizer.local_library as local_library_module
 from playlist_optimizer.local_library import (
     SUPPORTED_AUDIO_EXTENSIONS,
     LocalLibraryBrowser,
@@ -219,6 +220,126 @@ def test_folder_browser_rejects_escape_and_hides_external_symlinks(tmp_path: Pat
     assert [folder.name for folder in browser.browse().folders] == ["safe"]
     with pytest.raises(ValueError, match="escapes"):
         browser.browse("../outside")
+
+
+def test_discovers_m3u_playlists_recursively_in_stable_path_order(tmp_path: Path) -> None:
+    music_root = tmp_path / "music"
+    sets = music_root / "Sets"
+    nested = sets / "2026" / "August"
+    hidden = sets / ".sequence"
+    nested.mkdir(parents=True)
+    hidden.mkdir()
+    (sets / "Warmup.M3U").write_text("track.mp3\n", encoding="utf-8")
+    (nested / "Main Set.m3u8").write_text("#EXTM3U\n", encoding="utf-8")
+    (nested / "notes.txt").write_text("not a playlist", encoding="utf-8")
+    (hidden / "cache.m3u8").write_text("#EXTM3U\n", encoding="utf-8")
+
+    result = LocalLibraryBrowser(music_root=music_root).discover_playlists("Sets")
+
+    assert result.root_name == "music"
+    assert result.search_path == "Sets"
+    assert result.search_name == "Sets"
+    assert [playlist.model_dump() for playlist in result.playlists] == [
+        {
+            "path": "Sets/2026/August/Main Set.m3u8",
+            "name": "Main Set",
+            "source_kind": "m3u8",
+        },
+        {
+            "path": "Sets/Warmup.M3U",
+            "name": "Warmup",
+            "source_kind": "m3u",
+        },
+    ]
+
+
+def test_discovers_and_imports_a_deep_m3u8_with_sibling_audio(tmp_path: Path) -> None:
+    music_root = tmp_path / "music"
+    audio_folder = music_root / "Audio" / "House"
+    playlist_folder = music_root / "Playlists" / "2026" / "August"
+    audio_folder.mkdir(parents=True)
+    playlist_folder.mkdir(parents=True)
+    (audio_folder / "First.mp3").write_bytes(b"first")
+    (audio_folder / "Second.flac").write_bytes(b"second")
+    playlist_path = playlist_folder / "Main Set.m3u8"
+    playlist_path.write_text(
+        "#EXTM3U\n../../../Audio/House/Second.flac\n../../../Audio/House/First.mp3\n",
+        encoding="utf-8",
+    )
+
+    discovery = LocalLibraryBrowser(music_root=music_root).discover_playlists("Playlists")
+    assert [playlist.path for playlist in discovery.playlists] == [
+        "Playlists/2026/August/Main Set.m3u8"
+    ]
+
+    discovered = discovery.playlists[0]
+    result = LocalPlaylistImporter(
+        music_root=music_root,
+        metadata_reader=_metadata,
+    ).import_playlist(
+        LocalPlaylistImportRequest(source_path=discovered.path, recursive=False)
+    )
+
+    assert result.source_kind == "m3u8"
+    assert result.playlist.name == "Main Set"
+    assert [track.name for track in result.playlist.tracks] == ["Second", "First"]
+    assert list(result.local_audio_paths.values()) == [
+        "Audio/House/Second.flac",
+        "Audio/House/First.mp3",
+    ]
+    assert result.analysis_cache_directory == "Playlists/2026/August"
+
+
+def test_playlist_discovery_skips_symlinks_and_rejects_an_unsafe_start_path(
+    tmp_path: Path,
+) -> None:
+    music_root = tmp_path / "music"
+    outside = tmp_path / "outside"
+    music_root.mkdir()
+    outside.mkdir()
+    external_playlist = outside / "external.m3u8"
+    external_playlist.write_text("#EXTM3U\n", encoding="utf-8")
+    (music_root / "external-file.m3u8").symlink_to(external_playlist)
+    (music_root / "external-folder").symlink_to(outside, target_is_directory=True)
+    browser = LocalLibraryBrowser(music_root=music_root)
+
+    assert browser.discover_playlists().playlists == []
+    with pytest.raises(ValueError, match="escapes"):
+        browser.discover_playlists("../outside")
+
+
+def test_playlist_discovery_keeps_same_named_files_in_different_folders(
+    tmp_path: Path,
+) -> None:
+    music_root = tmp_path / "music"
+    house = music_root / "Playlists" / "House"
+    techno = music_root / "Playlists" / "Techno"
+    house.mkdir(parents=True)
+    techno.mkdir(parents=True)
+    (house / "Favorites.m3u8").write_text("#EXTM3U\n", encoding="utf-8")
+    (techno / "Favorites.m3u8").write_text("#EXTM3U\n", encoding="utf-8")
+
+    result = LocalLibraryBrowser(music_root=music_root).discover_playlists("Playlists")
+
+    assert [playlist.path for playlist in result.playlists] == [
+        "Playlists/House/Favorites.m3u8",
+        "Playlists/Techno/Favorites.m3u8",
+    ]
+    assert [playlist.name for playlist in result.playlists] == ["Favorites", "Favorites"]
+
+
+def test_playlist_discovery_fails_instead_of_returning_a_truncated_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    music_root = tmp_path / "music"
+    music_root.mkdir()
+    for index in range(3):
+        (music_root / f"set-{index}.m3u8").write_text("#EXTM3U\n", encoding="utf-8")
+    monkeypatch.setattr(local_library_module, "_MAX_DIRECTORY_ENTRIES_SCANNED", 2)
+
+    with pytest.raises(ValueError, match="at most 2 entries; choose a narrower parent folder"):
+        LocalLibraryBrowser(music_root=music_root).discover_playlists()
 
 
 def test_resolves_only_supported_audio_files_inside_the_music_root(tmp_path: Path) -> None:

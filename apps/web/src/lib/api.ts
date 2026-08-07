@@ -7,6 +7,7 @@ import type {
   DemoPlaylist,
   InputPlaylist,
   LocalLibraryBrowseResponse,
+  LocalPlaylistDiscoveryResponse,
   LocalPlaylistImportResponse,
   NumericParameter,
   RecipePreviewResponse,
@@ -141,6 +142,11 @@ export function getAudioFeatureProgress(
 export function browseLocalLibrary(path = ""): Promise<LocalLibraryBrowseResponse> {
   const query = new URLSearchParams({ path });
   return request<LocalLibraryBrowseResponse>(`/api/v1/local-library/folders?${query}`);
+}
+
+export function discoverLocalPlaylists(path = ""): Promise<LocalPlaylistDiscoveryResponse> {
+  const query = new URLSearchParams({ path });
+  return request<LocalPlaylistDiscoveryResponse>(`/api/v1/local-library/playlists?${query}`);
 }
 
 export function selectLocalLibraryRoot(path: string): Promise<LocalLibraryBrowseResponse> {

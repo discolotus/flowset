@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0-preview.4] - 2026-08-06
+
+- Add recursive `.m3u` and `.m3u8` discovery beneath a user-selected parent folder and feed
+  imported playlist files into the existing multi-playlist analysis workflow.
+- Keep discovery root-relative and read-only, ignore hidden and symlinked entries, and prevent
+  stale searches from replacing results for a newer folder choice.
+
 ## [0.2.0-preview.3] - 2026-08-03
 
 - Simplify the workspace by removing the duplicate export action and moving secondary controls

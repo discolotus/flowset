@@ -219,6 +219,19 @@ export interface LocalLibraryBrowseResponse {
   folders: LocalLibraryFolder[];
 }
 
+export interface LocalPlaylistFile {
+  path: string;
+  name: string;
+  source_kind: "m3u" | "m3u8";
+}
+
+export interface LocalPlaylistDiscoveryResponse {
+  root_name: string;
+  search_path: string;
+  search_name: string;
+  playlists: LocalPlaylistFile[];
+}
+
 export interface LocalPlaylistImportResponse {
   source_kind: "directory" | "m3u" | "m3u8";
   playlist: InputPlaylist;

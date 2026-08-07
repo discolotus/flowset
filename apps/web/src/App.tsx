@@ -12,7 +12,10 @@ import {
   AnalysisPipelineProgress,
   type AnalysisPipelineStage,
 } from "./components/AnalysisPipelineProgress";
-import { LocalLibraryPicker } from "./components/LocalLibraryPicker";
+import {
+  LocalLibraryPicker,
+  type LocalSourceMethod,
+} from "./components/LocalLibraryPicker";
 import { LocalDataSummary } from "./components/LocalDataSummary";
 import { OutputPlaylistCard } from "./components/OutputPlaylistCard";
 import { ParameterGuide } from "./components/ParameterGuide";
@@ -23,6 +26,7 @@ import { SourcePlaylistPicker } from "./components/SourcePlaylistPicker";
 import { ExportDialog } from "./components/ExportDialog";
 import {
   browseLocalLibrary,
+  discoverLocalPlaylists,
   getAudioFeatureProgress,
   getAudioFeatureProviders,
   getDemoPlaylists,
@@ -88,6 +92,7 @@ import {
   type SplitFactorChanges,
 } from "./lib/factorGrid";
 import { readRowDensity, saveRowDensity, type RowDensity } from "./lib/rowDensity";
+import { LatestRequestGuard } from "./lib/latestRequest";
 import {
   forgetRecipe,
   loadWorkspaceState,
@@ -106,6 +111,8 @@ import type {
   InputPlaylist,
   LocalLibraryBrowseResponse,
   LocalLibraryFolder,
+  LocalPlaylistDiscoveryResponse,
+  LocalPlaylistFile,
   NumericParameter,
   RecipePreviewResponse,
   SortDirection,
@@ -333,10 +340,14 @@ export default function App() {
   const [demoPlaylists, setDemoPlaylists] = useState<InputPlaylist[]>([]);
   const [localPlaylists, setLocalPlaylists] = useState<InputPlaylist[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [localSourceMethod, setLocalSourceMethod] = useState<LocalSourceMethod>("folders");
   const [folderBrowser, setFolderBrowser] = useState<LocalLibraryBrowseResponse | null>(null);
   const [library, setLibrary] = useState<LocalLibraryBrowseResponse | null>(null);
+  const [playlistDiscovery, setPlaylistDiscovery] =
+    useState<LocalPlaylistDiscoveryResponse | null>(null);
   const [libraryRootPath, setLibraryRootPath] = useState<string | null>(null);
   const [browsingFolders, setBrowsingFolders] = useState(false);
+  const [discoveringPlaylistFiles, setDiscoveringPlaylistFiles] = useState(false);
   const [selectingNativeFolder, setSelectingNativeFolder] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [importingPaths, setImportingPaths] = useState<Set<string>>(new Set());
@@ -380,6 +391,7 @@ export default function App() {
     useState<AppleMusicImportRequest | null>(null);
   const analysisRunRevision = useRef(0);
   const previewRevision = useRef(0);
+  const playlistDiscoveryRequests = useRef(new LatestRequestGuard());
   const [spotifyPreviewRevision, setSpotifyPreviewRevision] = useState(0);
   const reviewedAppleMusicRevision = useRef<number | null>(null);
   const [rowDensity, setRowDensity] = useState<RowDensity>(() => readRowDensity(localStorage));
@@ -467,6 +479,27 @@ export default function App() {
         );
       })
       .finally(() => setBrowsingFolders(false));
+  };
+
+  const searchPlaylistFiles = async (path: string) => {
+    const request = playlistDiscoveryRequests.current.begin();
+    setDiscoveringPlaylistFiles(true);
+    setPlaylistDiscovery(null);
+    setLibraryError(null);
+    try {
+      const discovery = await discoverLocalPlaylists(path);
+      if (!request.isCurrent()) return;
+      setPlaylistDiscovery(discovery);
+    } catch (reason: unknown) {
+      if (!request.isCurrent()) return;
+      setLibraryError(
+        reason instanceof Error
+          ? reason.message
+          : "Could not search this folder for playlist files.",
+      );
+    } finally {
+      if (request.isCurrent()) setDiscoveringPlaylistFiles(false);
+    }
   };
 
   useEffect(() => {
@@ -967,6 +1000,21 @@ export default function App() {
     if (!folderBrowser) return;
     setLibrary(folderBrowser);
     setLibraryError(null);
+    if (localSourceMethod === "playlist-files") {
+      void searchPlaylistFiles(folderBrowser.current_path);
+    }
+  };
+
+  const chooseLocalSourceMethod = (method: LocalSourceMethod) => {
+    setLocalSourceMethod(method);
+    setLibraryError(null);
+    if (method === "playlist-files" && library) {
+      void searchPlaylistFiles(library.current_path);
+    } else if (method === "folders") {
+      playlistDiscoveryRequests.current.invalidate();
+      setDiscoveringPlaylistFiles(false);
+      setPlaylistDiscovery(null);
+    }
   };
 
   const activateNativeLibrary = async (path: string) => {
@@ -974,6 +1022,7 @@ export default function App() {
     setLibraryRootPath(path);
     setFolderBrowser(listing);
     setLibrary(listing);
+    if (localSourceMethod === "playlist-files") await searchPlaylistFiles("");
     const nextState = rememberLibraryRoot(workspaceStateRef.current, path);
     persistWorkspace(nextState, `Remembered ${path} as a recent parent folder.`);
     const providers = await getAudioFeatureProviders();
@@ -988,7 +1037,9 @@ export default function App() {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: "Choose your music library",
+        title: localSourceMethod === "playlist-files"
+          ? "Choose a parent folder for playlist files"
+          : "Choose your music library",
       });
       if (typeof selected !== "string") return;
       await activateNativeLibrary(selected);
@@ -1056,7 +1107,10 @@ export default function App() {
   };
 
   const changeLibrary = () => {
+    playlistDiscoveryRequests.current.invalidate();
+    setDiscoveringPlaylistFiles(false);
     setLibrary(null);
+    setPlaylistDiscovery(null);
     setLibraryRootPath(null);
     setLocalPlaylists([]);
     setSelectedIds(new Set());
@@ -1067,16 +1121,25 @@ export default function App() {
     setAnalysisStatus(null);
   };
 
-  const importFolder = (folder: LocalLibraryFolder) => {
-    setImportingPaths((current) => new Set(current).add(folder.path));
+  const importLocalSource = (source: LocalLibraryFolder | LocalPlaylistFile) => {
+    setImportingPaths((current) => new Set(current).add(source.path));
     setLibraryError(null);
-    importLocalPlaylist({ sourcePath: folder.path, recursive: true })
+    importLocalPlaylist({
+      sourcePath: source.path,
+      recursive: !("source_kind" in source),
+    })
       .then((result) => {
+        const sourceLabel = result.source_kind === "directory"
+          ? "Local folder"
+          : `${result.source_kind.toUpperCase()} playlist file`;
+        const cacheLocation = result.analysis_cache_directory
+          ? `${result.analysis_cache_directory}/.sequence`
+          : ".sequence";
         setLocalPlaylists((current) => [
           ...current.filter((playlist) => playlist.id !== result.playlist.id),
           {
             ...result.playlist,
-            description: `${folder.path} · Local folder${
+            description: `${source.path} · ${sourceLabel}${
               result.cached_track_count
                 ? ` · ${result.cached_track_count} cached`
                 : ""
@@ -1084,7 +1147,7 @@ export default function App() {
           },
         ]);
         setSelectedIds((current) => new Set(current).add(result.playlist.id));
-        setImportedPaths((current) => new Set(current).add(folder.path));
+        setImportedPaths((current) => new Set(current).add(source.path));
         setLocalAudioPaths((current) => ({ ...current, ...result.local_audio_paths }));
         setAnalysisCacheDirectories((current) =>
           addPlaylistCacheDirectory(
@@ -1097,8 +1160,8 @@ export default function App() {
           result.cached_track_count > 0
             ? `Restored ${result.cached_track_count} cached track ${
                 result.cached_track_count === 1 ? "analysis" : "analyses"
-              } from ${folder.name}/.sequence.`
-            : `${folder.name} is ready. New analysis will be cached in its .sequence folder.`,
+              } from ${cacheLocation}.`
+            : `${source.name} is ready. New analysis will be cached in ${cacheLocation}.`,
         );
         const essentia = featureProviders.find(({ id }) => id === "essentia");
         if (essentia?.status === "available") setFeatureProvider("essentia");
@@ -1106,13 +1169,13 @@ export default function App() {
       })
       .catch((reason: unknown) => {
         setLibraryError(
-          reason instanceof Error ? reason.message : `Could not import ${folder.name}.`,
+          reason instanceof Error ? reason.message : `Could not import ${source.name}.`,
         );
       })
       .finally(() => {
         setImportingPaths((current) => {
           const next = new Set(current);
-          next.delete(folder.path);
+          next.delete(source.path);
           return next;
         });
       });
@@ -1358,7 +1421,7 @@ export default function App() {
               aria-pressed={sourceMode === "local"}
               onClick={() => chooseSourceMode("local")}
             >
-              Local folders
+              Local sources
             </button>
             <button
               type="button"
@@ -1373,9 +1436,32 @@ export default function App() {
 
           {sourceMode === "local" ? (
             <div className="mt-4 space-y-5">
+              <div className="source-mode-tabs" role="group" aria-label="Local source method">
+                <button
+                  type="button"
+                  disabled={analyzing}
+                  className={localSourceMethod === "folders" ? "active" : ""}
+                  aria-pressed={localSourceMethod === "folders"}
+                  onClick={() => chooseLocalSourceMethod("folders")}
+                >
+                  Folder playlists
+                </button>
+                <button
+                  type="button"
+                  disabled={analyzing}
+                  className={localSourceMethod === "playlist-files" ? "active" : ""}
+                  aria-pressed={localSourceMethod === "playlist-files"}
+                  onClick={() => chooseLocalSourceMethod("playlist-files")}
+                >
+                  Playlist files
+                </button>
+              </div>
               <LocalLibraryPicker
                 browser={folderBrowser}
                 library={library}
+                sourceMethod={localSourceMethod}
+                playlistDiscovery={playlistDiscovery}
+                discoveringPlaylistFiles={discoveringPlaylistFiles}
                 browsing={browsingFolders}
                 importingPaths={importingPaths}
                 importedPaths={importedPaths}
@@ -1388,7 +1474,7 @@ export default function App() {
                 onSelectNativeFolder={chooseNativeLibrary}
                 onSelectRecentRoot={chooseRecentLibrary}
                 onChooseLibrary={chooseLibrary}
-                onImport={importFolder}
+                onImport={importLocalSource}
                 onChangeLibrary={changeLibrary}
               />
               {localPlaylists.length > 0 && (
@@ -1432,7 +1518,7 @@ export default function App() {
                   Choose where musical measurements come from
                 </h3>
                 <p className="mt-2 text-xs leading-5 text-mist/55">
-                  Import folders first, then analyze the selected tracks. Measurements are reused from a hidden .sequence cache inside each playlist folder; changed files are analyzed again.
+                  Import folder or playlist-file sources, then analyze the selected tracks. Measurements are reused from hidden .sequence caches beside each source; changed files are analyzed again.
                 </p>
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   <button

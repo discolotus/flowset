@@ -36,6 +36,15 @@ const uniqueTrack: Track = {
   audio_features: { energy: 0.8, danceability: 0.4, tempo: 118, valence: 0.3 },
 };
 
+const localTrack: Track = {
+  ...sharedTrack,
+  id: "local-main-track",
+  name: "Local Main Track",
+  genres: [],
+  audio_features: null,
+  audio_feature_provenance: null,
+};
+
 const demoPlaylists: DemoPlaylist[] = [
   {
     id: "fixture-a",
@@ -68,6 +77,8 @@ const demoPlaylists: DemoPlaylist[] = [
 ];
 
 const previewRequests: Array<Record<string, unknown>> = [];
+const playlistDiscoveryPaths: string[] = [];
+const localPlaylistImportRequests: Array<Record<string, unknown>> = [];
 const storageValues = new Map<string, string>();
 const testStorage: Storage = {
   get length() { return storageValues.size; },
@@ -158,6 +169,8 @@ function jsonResponse(body: unknown): Response {
 
 beforeEach(() => {
   previewRequests.length = 0;
+  playlistDiscoveryPaths.length = 0;
+  localPlaylistImportRequests.length = 0;
   storageValues.clear();
   Object.defineProperty(window, "localStorage", {
     configurable: true,
@@ -184,6 +197,39 @@ beforeEach(() => {
         folders: [],
       });
     }
+    if (path.includes("/api/v1/local-library/playlists")) {
+      playlistDiscoveryPaths.push(path);
+      return jsonResponse({
+        root_name: "Music",
+        search_path: "",
+        search_name: "Music",
+        playlists: [{
+          path: "Playlists/2026/August/Main Set.m3u8",
+          name: "Main Set",
+          source_kind: "m3u8",
+        }],
+      });
+    }
+    if (path.includes("/api/v1/local-library/import")) {
+      localPlaylistImportRequests.push(
+        JSON.parse(String(init?.body)) as Record<string, unknown>,
+      );
+      return jsonResponse({
+        source_kind: "m3u8",
+        playlist: {
+          id: "local-main-set",
+          name: "Main Set",
+          tracks: [localTrack],
+        },
+        local_audio_paths: {
+          [localTrack.id]: "Audio/House/Local Main Track.mp3",
+        },
+        analysis_cache_directory: "Playlists/2026/August",
+        cached_track_count: 0,
+        skipped_files: [],
+        warnings: [],
+      });
+    }
     if (path.includes("/api/v1/recipes/preview")) {
       const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
       previewRequests.push(request);
@@ -206,6 +252,36 @@ async function openFixtureWorkspace(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("App behavior", () => {
+  it("discovers, imports, selects, and readies a playlist-file source", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const playlistFiles = await screen.findByRole("button", { name: "Playlist files" });
+    expect(playlistFiles.getAttribute("aria-pressed")).toBe("false");
+    await user.click(playlistFiles);
+    expect(playlistFiles.getAttribute("aria-pressed")).toBe("true");
+
+    await user.click(await screen.findByRole("button", { name: /Search.*Music/ }));
+    const addPlaylist = await screen.findByRole("button", { name: "Add playlist" });
+    expect(screen.getByTitle("Playlists/2026/August/Main Set.m3u8")).not.toBeNull();
+    expect(playlistDiscoveryPaths).toEqual(["/api/v1/local-library/playlists?path="]);
+
+    await user.click(addPlaylist);
+    await waitFor(() => expect(localPlaylistImportRequests).toEqual([{
+      source_path: "Playlists/2026/August/Main Set.m3u8",
+      recursive: false,
+    }]));
+
+    const importedSources = await screen.findAllByRole("checkbox", { name: /Main Set/ });
+    expect(importedSources).toHaveLength(2);
+    expect(importedSources.every((source) => source.getAttribute("aria-checked") === "true")).toBe(true);
+    const summary = screen.getByLabelText("Combined source summary");
+    expect(summary.textContent).toContain("1 sources");
+    expect(summary.textContent).toContain("1 input tracks");
+    const analyze = screen.getByRole("button", { name: "Analyze selected tracks" });
+    expect(analyze).toHaveProperty("disabled", false);
+  });
+
   it("runs the visible source, deduplication, split, subgroup, scoped-sort, and output flow", async () => {
     const user = userEvent.setup();
     render(<App />);

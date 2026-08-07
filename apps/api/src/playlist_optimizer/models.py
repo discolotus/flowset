@@ -238,6 +238,19 @@ class LocalLibraryFolder(BaseModel):
     name: str
 
 
+class LocalPlaylistFile(BaseModel):
+    path: str
+    name: str
+    source_kind: Literal["m3u", "m3u8"]
+
+
+class LocalPlaylistDiscoveryResponse(BaseModel):
+    root_name: str
+    search_path: str
+    search_name: str
+    playlists: list[LocalPlaylistFile] = Field(default_factory=list)
+
+
 class LocalLibraryRootRequest(BaseModel):
     path: str = Field(min_length=1)
 

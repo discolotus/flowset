@@ -47,7 +47,7 @@ python3 scripts/smoke_test_api_runtime.py \
   --sidecar "src-tauri/target/release/bundle/macos/Flowset.app/Contents/MacOS/playlist-optimizer-api" \
   --model-dir "src-tauri/target/release/bundle/macos/Flowset.app/Contents/Resources/models/essentia"
 ./scripts/validate_macos_release.sh \
-  dist/release/Flowset-0.2.0-preview.2-arm64.zip \
+  dist/release/Flowset-0.2.0-preview.4-arm64.zip \
   --allow-unsigned
 ```
 
@@ -77,9 +77,9 @@ The separate public repository `discolotus/homebrew-tap` owns
 
 ```bash
 ./scripts/generate_homebrew_cask.sh \
-  --version 0.2.0-preview.2 \
+  --version 0.2.0-preview.4 \
   --sha256 "$(cut -d ' ' -f 1 \
-    dist/release/Flowset-0.2.0-preview.2-arm64.zip.sha256)" \
+    dist/release/Flowset-0.2.0-preview.4-arm64.zip.sha256)" \
   --output /path/to/homebrew-tap/Casks/playlist-optimizer.rb
 
 brew audit --cask --strict /path/to/homebrew-tap/Casks/playlist-optimizer.rb

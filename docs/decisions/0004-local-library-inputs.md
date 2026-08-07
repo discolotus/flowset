@@ -18,6 +18,11 @@ stale absolute paths.
 Make a directory, `.m3u`, or `.m3u8` file beneath `ESSENTIA_AUDIO_ROOT` importable as an
 `InputPlaylist` through `POST /api/v1/local-library/import`.
 
+Expose playlist files through a separate bounded discovery operation. Starting at any safe
+root-relative parent, recursively find `.m3u` and `.m3u8` candidates without parsing them, following
+symlinks, or entering hidden directories. Import remains an explicit user action, and discovered
+files enter the same multi-playlist selection flow as directory sources.
+
 Local import is metadata-only and returns a track-ID-to-relative-path map. Essentia resolution is
 a separate operation so discovery stays fast and repeated playlist organization can reuse cached
 analysis later.
@@ -31,6 +36,8 @@ Security and data-integrity rules:
 - M3U order is preserved; duplicate file entries are reported rather than silently reanalyzed.
 - Track metadata comes from embedded tags with filename/folder fallbacks.
 - Stable local IDs are derived from root-relative paths; absolute paths are never returned.
+- The selected root is the common trust boundary for both discovered playlists and referenced
+  audio; references outside it remain invalid.
 - Local-library and Essentia routes accept loopback clients only until authenticated ownership
   exists.
 - The frontend sends small Essentia batches and exposes live progress for the combined native DSP
