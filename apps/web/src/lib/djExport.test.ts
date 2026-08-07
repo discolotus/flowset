@@ -102,6 +102,34 @@ describe("Rekordbox XML export", () => {
     expect(result.contents).toContain('<NODE Name="Two" Type="1" KeyType="0" Entries="2">\n        <TRACK Key="2"/>\n        <TRACK Key="1"/>');
   });
 
+  it("preserves every position in a realistic 24-track playlist", () => {
+    const tracks = Array.from({ length: 24 }, (_, index) => {
+      const position = String(index + 1).padStart(2, "0");
+      return makeTrack(`order-${position}`, `Order ${position}`);
+    });
+    const localAudioPaths = Object.fromEntries(
+      tracks.map((track) => [track.id, `/Music/${track.name}.mp3`]),
+    );
+    const result = buildRekordboxXml({
+      outputs: [makeOutput("long-order", "Long Order", tracks)],
+      localAudioPaths,
+      generatedAt: "2026-08-06T00:00:00.000Z",
+    });
+
+    expect(result.playlistTrackCount).toBe(24);
+    expect(result.manifest.playlists[0].ordered_tracks.map(({ position, name }) => ({
+      position,
+      name,
+    }))).toEqual(tracks.map((track, index) => ({
+      position: index + 1,
+      name: track.name,
+    })));
+    expect(result.contents).not.toBeNull();
+    expect([...result.contents!.matchAll(/<TRACK Key="(\d+)"\/>/g)]
+      .map((match) => Number(match[1])))
+      .toEqual(Array.from({ length: 24 }, (_, index) => index + 1));
+  });
+
   it("escapes XML metadata and emits percent-encoded absolute Unicode file URLs", () => {
     const special = makeTrack("special", 'A&B <Night> "Mix"', {
       artist: "DJ Example's > Set",

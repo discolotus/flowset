@@ -759,6 +759,31 @@ mod tests {
         fs::remove_file(second).expect("fixture should be removable");
     }
 
+    #[test]
+    fn generated_command_preserves_all_positions_for_a_24_track_playlist() {
+        let tracks: Vec<PathBuf> = (1..=24)
+            .map(|position| test_file(&format!("long-order-{position:02}")))
+            .collect();
+        let request = request_with_paths(&tracks);
+        let validated = validate_for_import(&request).expect("request should be valid");
+
+        let script = build_import_script(&validated);
+        let mut previous_position = 0;
+        for track in &tracks {
+            let track_position = script
+                .find(&apple_script_string(&track.to_string_lossy()))
+                .expect("every supplied track should appear in the generated command");
+            assert!(track_position > previous_position);
+            previous_position = track_position;
+        }
+        assert_eq!(script.matches("set addedTrackReference to add").count(), 24);
+        assert!(script.contains("orderedListsMatch(expectedDatabaseIDs, actualDatabaseIDs)"));
+
+        for track in tracks {
+            fs::remove_file(track).expect("fixture should be removable");
+        }
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
     fn generated_command_compiles_against_the_music_dictionary_without_running_it() {

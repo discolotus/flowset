@@ -65,6 +65,8 @@ Evidence directory:
 - `08-rebuilt-native-app.png`: rebuilt native Flowset workspace before receiver QA.
 - `10-rekordbox-import-playback.png`: generated M3U8 imported with exact fictional metadata and loaded on deck 1.
 - `11-rekordbox-xml-handoff.png`: generated XML selected as Rekordbox's Imported Library.
+- `12-flowset-24-track-preview.png`: realistic 24-track preview before receiver export.
+- `13-apple-music-24-track-loading-blocker.png`: Music accepted the playlist object but kept it empty while its Cloud Library remained loading.
 
 Browser console warnings/errors were empty, and network inspection showed only the expected
 capabilities/provider/demo/preview requests with no unexpected failures. Loading and error states
@@ -104,6 +106,35 @@ app now handles it deterministically and safely, but a successful Apple Music cr
 claimed until Music itself becomes ready. The tiny synthetic audio fixtures are also unsuitable for
 TensorFlow mood inference; this is retained as verified error-state evidence rather than represented
 as a successful mood analysis.
+
+## Realistic 24-track order check
+
+On 2026-08-06, a separate fictional crate named `[Sequence QA] Long Order 24` was imported through
+the native Flowset folder picker. Flowset rendered one 24-track output in exact `Order 01` through
+`Order 24` sequence and exported its real DJ bundle. The generated M3U8 listed all 24 absolute paths
+in that sequence, and the generated Rekordbox XML referenced keys 1 through 24 in sequence.
+
+Rekordbox accepted the generated M3U8. A read-only query of Rekordbox's actual local collection
+database then returned 24 playlist rows with `TrackNo` 1 through 24, each paired with the matching
+`[Sequence QA] Order 01` through `[Sequence QA] Order 24` title. This is a receiver-side pass for
+every position, not a first/last sample.
+
+Music's native Flowset import review correctly showed one playlist and 24 ordered entries, but the
+non-mutating readiness preflight timed out because Music still reported `Loading Cloud Library…`.
+As a second receiver check, Music's own **File → Library → Import Playlist…** accepted the Flowset
+M3U8 and created `[Sequence QA] Long Order 24 — Low Duration`; however, the playlist remained empty
+behind `Loading your Cloud Library. This may take several minutes.` Adding the 24 fictional MP3s to
+Music's library did not clear that state. Apple Music order is therefore explicitly **not passed**;
+the external receiver never exposed populated rows to compare.
+
+Deterministic regression coverage now also exercises 24 ordered entries in both the Rekordbox XML
+builder and generated Apple Music command. The Apple command still performs receiver-side database
+ID comparison when Music succeeds, but the current live Music state prevented that comparison from
+running.
+
+The additional pre-recorded artifact manifest is `/private/tmp/sequence-qa-long-order-manifest.md`.
+Its exact source folder, export folder, Rekordbox playlist, and Music playlist are retained so the
+receiver evidence remains inspectable.
 
 `11-rekordbox-xml-handoff.png` is retained as private local evidence and should not be published
 without redaction because Rekordbox's preference screen also displays unrelated local-library paths.
