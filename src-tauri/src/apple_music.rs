@@ -10,6 +10,13 @@ const MAX_TRACKS: usize = 50_000;
 const RECORD_SEPARATOR: char = '\u{001e}';
 const FIELD_SEPARATOR: char = '\u{001f}';
 const MESSAGE_SEPARATOR: char = '\u{001d}';
+const MUSIC_PREFLIGHT_SCRIPT: &str = r#"with timeout of 15 seconds
+tell application "Music"
+    set folderCount to count of every folder playlist
+end tell
+return "ready"
+end timeout
+"#;
 
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -107,9 +114,20 @@ pub(crate) fn import_apple_music_playlists(
     request: AppleMusicImportRequest,
 ) -> Result<AppleMusicImportReport, String> {
     let validated = validate_for_import(&request)?;
+    preflight_music()?;
     let script = build_import_script(&validated);
     let output = run_osascript(&script)?;
     parse_import_output(&validated, &output)
+}
+
+fn preflight_music() -> Result<(), String> {
+    let result = run_osascript(MUSIC_PREFLIGHT_SCRIPT)?;
+    if result.trim() == "ready" {
+        Ok(())
+    } else {
+        Err("Music returned an unexpected readiness response. Close and reopen Music, then try again."
+            .to_owned())
+    }
 }
 
 fn build_import_plan(request: &AppleMusicImportRequest) -> AppleMusicImportPlan {
@@ -432,6 +450,9 @@ fn run_osascript(script: &str) -> Result<String, String> {
         if details.contains("-1743") {
             return Err("Flowset does not have permission to control Music. Allow Music access in System Settings > Privacy & Security > Automation, then try again.".to_owned());
         }
+        if details.contains("-1712") {
+            return Err("Music did not become ready within 15 seconds. Wait for “Loading Cloud Library…” to finish, or close and reopen Music, then review the import again.".to_owned());
+        }
         return Err(format!(
             "Apple Music import could not be completed: {details}"
         ));
@@ -585,7 +606,7 @@ mod tests {
     use super::{
         apple_script_string, build_import_plan, build_import_script, parse_import_output,
         validate_for_import, AppleMusicImportRequest, AppleMusicPlaylistRequest, FIELD_SEPARATOR,
-        MESSAGE_SEPARATOR, RECORD_SEPARATOR,
+        MESSAGE_SEPARATOR, MUSIC_PREFLIGHT_SCRIPT, RECORD_SEPARATOR,
     };
     use std::{
         fs,
@@ -618,6 +639,14 @@ mod tests {
                     .collect(),
             }],
         }
+    }
+
+    #[test]
+    fn music_preflight_has_a_short_non_mutating_timeout() {
+        assert!(MUSIC_PREFLIGHT_SCRIPT.contains("with timeout of 15 seconds"));
+        assert!(MUSIC_PREFLIGHT_SCRIPT.contains("count of every folder playlist"));
+        assert!(!MUSIC_PREFLIGHT_SCRIPT.contains("make new"));
+        assert!(!MUSIC_PREFLIGHT_SCRIPT.contains(" add "));
     }
 
     #[test]

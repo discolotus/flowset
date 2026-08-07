@@ -66,6 +66,7 @@ import {
   runAppleMusicImport,
   type AppleMusicImportRequest,
 } from "./lib/appleMusicImport";
+import { errorMessage } from "./lib/errors";
 import {
   buildExportCompatibilityManifest,
   exportDjBundle,
@@ -907,7 +908,7 @@ export default function App() {
       if (revision !== previewRevision.current) return;
       setAppleMusicState({
         status: "error",
-        message: reason instanceof Error ? reason.message : "Could not prepare the Music import.",
+        message: errorMessage(reason, "Could not prepare the Music import."),
       });
     }
   };
@@ -932,7 +933,7 @@ export default function App() {
     } catch (reason: unknown) {
       setAppleMusicState({
         status: "error",
-        message: reason instanceof Error ? reason.message : "Could not import playlists into Music.",
+        message: errorMessage(reason, "Could not import playlists into Music."),
       });
     }
   };
