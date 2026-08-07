@@ -66,6 +66,7 @@ import {
   runAppleMusicImport,
   type AppleMusicImportRequest,
 } from "./lib/appleMusicImport";
+import { errorMessage } from "./lib/errors";
 import {
   buildExportCompatibilityManifest,
   exportDjBundle,
@@ -907,7 +908,7 @@ export default function App() {
       if (revision !== previewRevision.current) return;
       setAppleMusicState({
         status: "error",
-        message: reason instanceof Error ? reason.message : "Could not prepare the Music import.",
+        message: errorMessage(reason, "Could not prepare the Music import."),
       });
     }
   };
@@ -932,7 +933,7 @@ export default function App() {
     } catch (reason: unknown) {
       setAppleMusicState({
         status: "error",
-        message: reason instanceof Error ? reason.message : "Could not import playlists into Music.",
+        message: errorMessage(reason, "Could not import playlists into Music."),
       });
     }
   };
@@ -1320,9 +1321,6 @@ export default function App() {
             <span className="hidden text-[10px] uppercase tracking-[0.16em] text-acid/65 sm:block">
               {sourceMode === "local" ? "Local library workspace" : "Fixture workspace"}
             </span>
-            <button type="button" className="connect-button" onClick={() => setExportDialogOpen(true)}>
-              Export
-            </button>
           </div>
         </nav>
       </header>
@@ -1418,18 +1416,24 @@ export default function App() {
             </div>
           )}
 
-          <div className="feature-provider-panel">
-            <div className="max-w-xl">
-              <p className="eyebrow">Audio feature backend</p>
-              <h3 className="mt-1 font-display text-lg font-semibold">
-                Choose where musical measurements come from
-              </h3>
-              <p className="mt-2 text-xs leading-5 text-mist/55">
-                {sourceMode === "local"
-                  ? "Import folders first, then analyze the selected tracks. Measurements are reused from a hidden .sequence cache inside each playlist folder; changed files are analyzed again."
-                  : "Demo playlists remain on clearly labeled fixture values and are never presented as provider measurements."}
-              </p>
-              {sourceMode === "local" && (
+          {sourceMode === "demo" ? (
+            <div className="fixture-provider-notice" role="note" aria-label="Fixture measurement source">
+              <span className="status-dot" aria-hidden="true" />
+              <div>
+                <strong>Fictional fixture measurements</strong>
+                <p>Demo values are deterministic examples. ReccoBeats and Essentia are not queried in this mode.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="feature-provider-panel">
+              <div className="max-w-xl">
+                <p className="eyebrow">Audio feature backend</p>
+                <h3 className="mt-1 font-display text-lg font-semibold">
+                  Choose where musical measurements come from
+                </h3>
+                <p className="mt-2 text-xs leading-5 text-mist/55">
+                  Import folders first, then analyze the selected tracks. Measurements are reused from a hidden .sequence cache inside each playlist folder; changed files are analyzed again.
+                </p>
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   <button
                     type="button"
@@ -1445,18 +1449,18 @@ export default function App() {
                     </span>
                   )}
                 </div>
-              )}
+              </div>
+              <div className="min-w-0 lg:w-[38rem]">
+                <FeatureProviderPicker
+                  providers={featureProviders}
+                  selectedId={featureProvider}
+                  disabled={analyzing}
+                  onChange={setFeatureProvider}
+                  coverage={featureCoverage}
+                />
+              </div>
             </div>
-            <div className="min-w-0 lg:w-[38rem]">
-              <FeatureProviderPicker
-                providers={featureProviders}
-                selectedId={featureProvider}
-                disabled={analyzing}
-                onChange={setFeatureProvider}
-                coverage={featureCoverage}
-              />
-            </div>
-          </div>
+          )}
           {sourceMode === "local" && analysisProgress && (
             <div className="mt-5">
               <AnalysisPipelineProgress {...analysisProgress} />
@@ -1599,13 +1603,16 @@ export default function App() {
                     <h2 id="distribution-heading" className="mt-1 font-display text-xl font-semibold">Distribution</h2>
                     <p className="mt-2"><DistributionLegend parameter={distributionParameter} /></p>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 sm:w-[22rem]">
+                  <div className="distribution-controls sm:w-[22rem]">
                     <SelectField label="Parameter" value={distributionParameter} onChange={(value) => setDistributionParameter(value as NumericParameter)}>
                       <NumericParameterOptions coverage={numericParameterCoverage} />
                     </SelectField>
-                    <SelectField label="Histogram bins" value={distributionBinCount} onChange={(value) => setDistributionBinCount(Number(value))}>
-                      {[5, 6, 8, 10, 12].map((count) => <option key={count} value={count}>{count} bins</option>)}
-                    </SelectField>
+                    <details className="distribution-advanced">
+                      <summary>Advanced</summary>
+                      <SelectField label="Histogram bins" value={distributionBinCount} onChange={(value) => setDistributionBinCount(Number(value))}>
+                        {[5, 6, 8, 10, 12].map((count) => <option key={count} value={count}>{count} bins</option>)}
+                      </SelectField>
+                    </details>
                   </div>
                 </header>
                 <div className="px-5 pb-5 pt-2">
@@ -1733,7 +1740,9 @@ export default function App() {
       <footer className="mx-auto flex max-w-[1480px] flex-col justify-between gap-3 border-t border-line px-5 py-7 text-[11px] text-mist/45 sm:flex-row lg:px-8">
         <span>Flowset · V0.2 organization pipeline</span>
         <span>
-          Source playlists remain read-only · {featureProviders.find(({ id }) => id === featureProvider)?.display_name ?? featureProvider} selected
+          Source playlists remain read-only · {sourceMode === "demo"
+            ? "fictional fixture measurements"
+            : `${featureProviders.find(({ id }) => id === featureProvider)?.display_name ?? featureProvider} selected`}
         </span>
       </footer>
     </div>

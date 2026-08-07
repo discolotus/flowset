@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 import type {
   AppleMusicImportPlan,
   AppleMusicImportReport,
@@ -10,6 +12,46 @@ import type {
 import type { RekordboxFallbackFormat } from "../lib/djExport";
 import type { RecipeOutput } from "../lib/types";
 import { SpotifyDestination } from "./SpotifyDestination";
+
+export type ExportDestination = "apple-music" | "dj-bundle" | "m3u8" | "mp3" | "spotify";
+
+const DESTINATIONS: Array<{
+  id: ExportDestination;
+  kicker: string;
+  name: string;
+  description: string;
+}> = [
+  {
+    id: "apple-music",
+    kicker: "Best bridge to djay Pro",
+    name: "Apple Music",
+    description: "Create a new Music folder and every playlist in preview order.",
+  },
+  {
+    id: "dj-bundle",
+    kicker: "Batch Rekordbox handoff",
+    name: "DJ bundle",
+    description: "Rekordbox XML, ordered M3U8 playlists, and a compatibility report.",
+  },
+  {
+    id: "m3u8",
+    kicker: "Universal fallback",
+    name: "M3U8 folder",
+    description: "One standard ordered playlist file per basis playlist.",
+  },
+  {
+    id: "mp3",
+    kicker: "Portable audio folders",
+    name: "MP3 collection",
+    description: "Numbered audio folders with clean tags and relative playlists.",
+  },
+  {
+    id: "spotify",
+    kicker: "Local files → streaming playlists",
+    name: "Spotify",
+    description: "Review local matches, then create new numbered Spotify playlists.",
+  },
+];
 
 export type BatchActionState =
   | { status: "idle" }
@@ -55,6 +97,7 @@ interface BatchDestinationPanelProps {
   onExportDjBundle: () => void;
   onExportM3u8: () => void;
   onExportMp3: () => void;
+  initialDestination?: ExportDestination | null;
 }
 
 function ActionMessage({ state }: { state: BatchActionState }) {
@@ -99,7 +142,20 @@ export function BatchDestinationPanel({
   onExportDjBundle,
   onExportM3u8,
   onExportMp3,
+  initialDestination = null,
 }: BatchDestinationPanelProps) {
+  const [selectedDestination, setSelectedDestination] = useState<ExportDestination | null>(initialDestination);
+  const backButton = useRef<HTMLButtonElement>(null);
+  const choiceButtons = useRef<Partial<Record<ExportDestination, HTMLButtonElement | null>>>({});
+  const previousDestination = useRef<ExportDestination | null>(null);
+  useEffect(() => {
+    if (selectedDestination) {
+      backButton.current?.focus();
+    } else if (previousDestination.current) {
+      choiceButtons.current[previousDestination.current]?.focus();
+    }
+    previousDestination.current = selectedDestination;
+  }, [selectedDestination]);
   const appleBusy = appleMusicState.status === "planning"
     || appleMusicState.status === "importing";
   const appleImportNeedsAttention = appleMusicState.status === "imported"
@@ -109,12 +165,48 @@ export function BatchDestinationPanel({
       <div className="export-destinations-heading">
         <div>
           <p className="eyebrow">Send playlists</p>
-          <h3 id="export-destinations-title">Choose a destination</h3>
+          <h3 id="export-destinations-title">
+            {selectedDestination
+              ? DESTINATIONS.find(({ id }) => id === selectedDestination)?.name
+              : "Choose a destination"}
+          </h3>
         </div>
         <span>{playlistCount} playlists · {trackCount} ordered entries</span>
       </div>
 
-      <div className="export-destination-grid">
+      {selectedDestination === null ? (
+        <div className="export-destination-choices" role="list" aria-label="Export destinations">
+          {DESTINATIONS.map((destination) => (
+            <div key={destination.id} role="listitem">
+              <button
+                ref={(element) => { choiceButtons.current[destination.id] = element; }}
+                type="button"
+                className="export-destination-choice"
+                disabled={disabled}
+                aria-label={`Configure ${destination.name}`}
+                onClick={() => setSelectedDestination(destination.id)}
+              >
+                <span className="export-destination-kicker">{destination.kicker}</span>
+                <strong>{destination.name}</strong>
+                <span>{destination.description}</span>
+                <small>Configure destination →</small>
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="export-destination-detail">
+          <button
+            ref={backButton}
+            type="button"
+            className="export-destination-back"
+            onClick={() => setSelectedDestination(null)}
+          >
+            ← All destinations
+          </button>
+
+      <div className="export-destination-grid selected">
+        {selectedDestination === "apple-music" && (
         <article className="export-destination-card featured">
           <span className="export-destination-kicker">Best bridge to djay Pro</span>
           <h4>Apple Music</h4>
@@ -129,7 +221,9 @@ export function BatchDestinationPanel({
           </button>
           {!nativeApp && <small>Available in the Mac app.</small>}
         </article>
+        )}
 
+        {selectedDestination === "dj-bundle" && (
         <article className="export-destination-card">
           <span className="export-destination-kicker">Batch Rekordbox handoff</span>
           <h4>DJ bundle</h4>
@@ -182,7 +276,9 @@ export function BatchDestinationPanel({
           {!nativeApp && <small>Audio conversion requires the Mac desktop app.</small>}
           <ActionMessage state={djBundleState} />
         </article>
+        )}
 
+        {selectedDestination === "m3u8" && (
         <article className="export-destination-card">
           <span className="export-destination-kicker">Universal fallback</span>
           <h4>M3U8 folder</h4>
@@ -197,7 +293,9 @@ export function BatchDestinationPanel({
           </button>
           <ActionMessage state={m3u8State} />
         </article>
+        )}
 
+        {selectedDestination === "mp3" && (
         <article className="export-destination-card">
           <span className="export-destination-kicker">Portable audio folders</span>
           <h4>MP3 collection</h4>
@@ -264,7 +362,9 @@ export function BatchDestinationPanel({
             <p className="export-destination-message error" role="alert">{mp3ExportState.message}</p>
           )}
         </article>
+        )}
 
+        {selectedDestination === "spotify" && (
         <SpotifyDestination
           outputs={spotifyOutputs}
           revision={spotifyRevision}
@@ -272,9 +372,10 @@ export function BatchDestinationPanel({
           localSource={spotifyLocalSource}
           disabled={disabled}
         />
+        )}
       </div>
 
-      {appleMusicState.status === "review" && (
+      {selectedDestination === "apple-music" && appleMusicState.status === "review" && (
         <div className="apple-music-review" role="group" aria-label="Confirm Apple Music import">
           <div>
             <strong>Ready for Music</strong>
@@ -300,10 +401,10 @@ export function BatchDestinationPanel({
           </div>
         </div>
       )}
-      {appleMusicState.status === "importing" && (
+      {selectedDestination === "apple-music" && appleMusicState.status === "importing" && (
         <p className="export-destination-message" role="status">Creating playlists in Music in canonical order…</p>
       )}
-      {appleMusicState.status === "imported" && (
+      {selectedDestination === "apple-music" && appleMusicState.status === "imported" && (
         <p
           className={`export-destination-message ${appleImportNeedsAttention ? "error" : ""}`}
           role={appleImportNeedsAttention ? "alert" : "status"}
@@ -315,12 +416,14 @@ export function BatchDestinationPanel({
             : " · Music did not confirm every playlist’s order; review the import report."}
         </p>
       )}
-      {appleMusicState.status === "error" && (
+      {selectedDestination === "apple-music" && appleMusicState.status === "error" && (
         <p className="export-destination-message error" role="alert">{appleMusicState.message}</p>
       )}
       <p className="export-destination-footnote">
         In djay Pro, open the Music source or drag these Music playlists into My Collection. Rekordbox can import the bundle XML or any included M3U8 directly.
       </p>
+        </div>
+      )}
     </section>
   );
 }

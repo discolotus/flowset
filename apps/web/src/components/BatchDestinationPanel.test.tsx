@@ -27,7 +27,7 @@ const mp3Props = {
 };
 
 describe("BatchDestinationPanel", () => {
-  it("offers Music, Rekordbox bundle, and M3U8 destinations", () => {
+  it("offers every destination before showing configuration", () => {
     const markup = renderToStaticMarkup(
       <BatchDestinationPanel
         playlistCount={3}
@@ -42,23 +42,20 @@ describe("BatchDestinationPanel", () => {
       />,
     );
 
-    expect(markup).toContain("Review Music import");
+    expect(markup).toContain("Best bridge to djay Pro");
     expect(markup).toContain("Local files → streaming playlists");
-    expect(markup).toContain("Set up Spotify");
-    expect(markup).toContain("Export DJ bundle");
-    expect(markup).toContain("Export all M3U8");
-    expect(markup).toContain("Export MP3 folders");
-    expect(markup).toContain("FLAC, Opus, and other supported audio");
-    expect(markup).toContain("up to 320 kbps");
-    expect(markup).toContain("About 221 MB");
-    expect(markup).toContain("cannot restore source detail");
+    expect(markup).toContain("DJ bundle");
+    expect(markup).toContain("M3U8 folder");
+    expect(markup).toContain("MP3 collection");
+    expect(markup).not.toContain("Export DJ bundle");
+    expect(markup).not.toContain("Spotify Client ID");
     expect(markup).toContain("3 playlists · 92 ordered entries");
-    expect(markup).toContain("8 format warnings");
   });
 
   it("requires a reviewed plan before offering the live Music action", () => {
     const markup = renderToStaticMarkup(
       <BatchDestinationPanel
+        initialDestination="apple-music"
         playlistCount={3}
         trackCount={92}
         nativeApp
@@ -93,6 +90,7 @@ describe("BatchDestinationPanel", () => {
   it("reports whether Music preserved the requested order", () => {
     const markup = renderToStaticMarkup(
       <BatchDestinationPanel
+        initialDestination="apple-music"
         playlistCount={1}
         trackCount={2}
         nativeApp
@@ -134,6 +132,7 @@ describe("BatchDestinationPanel", () => {
   it("marks incomplete MP3 folder exports as partial and points to the manifest", () => {
     const markup = renderToStaticMarkup(
       <BatchDestinationPanel
+        initialDestination="mp3"
         playlistCount={1}
         trackCount={3}
         nativeApp
@@ -173,6 +172,7 @@ describe("BatchDestinationPanel", () => {
   it("explains that MP3 folders require the desktop app in browser mode", () => {
     const markup = renderToStaticMarkup(
       <BatchDestinationPanel
+        initialDestination="mp3"
         playlistCount={1}
         trackCount={3}
         nativeApp={false}
@@ -191,6 +191,7 @@ describe("BatchDestinationPanel", () => {
   it("offers opt-in Rekordbox conversion with FLAC or MP3 fallbacks", () => {
     const markup = renderToStaticMarkup(
       <BatchDestinationPanel
+        initialDestination="dj-bundle"
         playlistCount={2}
         trackCount={12}
         nativeApp
