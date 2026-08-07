@@ -29,13 +29,13 @@ data. Source playlists remain read-only and every proposed output retains its co
 | Complete output track lists | Keep; required inspection surface before export | `App.interaction.test.tsx`, `OutputPlaylistCard.test.tsx` | All populated outputs expanded with complete track rows | Native export tests validate positions and ordered requests. |
 | Compact rows and output metric | Keep as contextual inspection aids | `RowDensityToggle.test.tsx`, `UtilityControls.interaction.test.tsx` | Compact density and per-output valence metric both changed the rendered view | No native-only dependency. |
 | Per-playlist M3U8 | Keep, but behind contextual overflow | `UtilityControls.interaction.test.tsx`, native M3U8 tests | Overflow action opened only on the chosen output | Native write tests reject non-M3U8 targets and preserve existing files. |
-| Saved recipes: save / rename / mutate / apply / reload / delete | Keep; high value for repeated crates | `App.interaction.test.tsx`, `workspaceState.test.ts`, native workspace-state tests | Full lifecycle passed with an exact `[Sequence QA]` recipe and no residue | Native app saved and renamed the recorded recipe, restored subgroup 2 after a mutation to 3, and retained it after a full app rebuild/relaunch. The persistent recipe is intentionally retained for inspection. |
+| Saved recipes: save / rename / mutate / apply / reload / delete | Keep; high value for repeated crates | `App.interaction.test.tsx`, `workspaceState.test.ts`, native workspace-state tests | An isolated save/rename/mutate/apply/reload/delete lifecycle ended with empty browser storage | Native app saved and renamed the recorded recipe, restored subgroup 2 after a mutation to 3, and retained it after a full app rebuild/relaunch. The persistent recipe is intentionally retained for inspection. |
 | Recent roots, cache, and history paths | Keep paths; collapse details by default | `UtilityControls.interaction.test.tsx`, cache/API tests | Disclosure opened and showed all exact paths | Recent root and recipe restored after relaunch. Local Data disclosed the app-data workspace path and analysis-cache convention without exposing them by default. |
 | Export entry | Keep one fixed sidebar action; disable before preview | `App.interaction.test.tsx` | No header duplicate; empty preview had no enabled entry; ready preview enabled Export | Source playlists remain untouched by every native export test. |
 | Export dialog keyboard/backdrop/scroll behavior | Keep; required modal accessibility | `ExportDialog.test.tsx` | Focus trap, Escape, trigger restoration, direct-backdrop dismissal, and body scroll lock passed | Native WebView opened the progressive export flow and its destination-specific review/configuration states. |
 | Progressive export destination selection | Keep all five destinations; show configuration only after selection | `BatchDestinationPanel.test.tsx`, `BatchDestinationPanel.interaction.test.tsx` | All five destination states checked; choosing focused Back and returning restored the originating choice | Packaged/native command boundaries exist for every local destination. |
-| DJ bundle and Rekordbox compatibility | Keep; solves a real receiver constraint | `djExport.test.ts`, `BatchDestinationPanel.interaction.test.tsx`, native Rekordbox tests | FLAC and MP3 request wiring checked; conversion controls appear only for DJ bundle | Native exports produced FLAC and 320 kbps MP3 compatibility bundles. Rekordbox imported the MP3 bundle M3U8 as a two-track playlist, loaded Alpha on deck 1, showed the fictional title/artist, played it, and stopped cleanly. Its XML Imported Library setting accepted the generated collection with four tracks and two playlists. |
-| Apple Music review / confirm / cancel | Keep the review boundary; it prevents accidental library mutation | `appleMusicImport.test.ts`, native dry-run, script-compilation, order, report, and readiness-preflight tests | Browser correctly explains that review is native-only | Native Review and Cancel passed. Create found Music stuck on `Loading Cloud Library…`; no QA folder or playlist was created. That pass exposed and fixed an unbounded receiver wait: Flowset now performs a non-mutating 15-second readiness preflight and displays actionable recovery text. The fixed behavior was verified live. |
+| DJ bundle and Rekordbox compatibility | Keep; solves a real receiver constraint | `djExport.test.ts`, `BatchDestinationPanel.interaction.test.tsx`, native Rekordbox tests | FLAC and MP3 request wiring checked; conversion controls appear only for DJ bundle | Native exports produced FLAC and 320 kbps MP3 compatibility bundles. Rekordbox imported the MP3 bundle M3U8 as a two-track playlist, loaded a generated track on deck 1, showed the fictional title/artist, played it, and stopped cleanly. The XML browser exposed four tracks and two playlists after the generated file was selected as Rekordbox's Imported Library bridge; this does not claim those XML objects were copied into the main Collection. |
+| Apple Music review / confirm / cancel | Keep the review boundary; it prevents accidental library mutation | `appleMusicImport.test.ts`, `errors.test.ts`, native dry-run/script/order/report tests, and a non-mutating preflight-structure test | Browser correctly explains that review is native-only | Native Review and Cancel passed. Create found Music stuck on `Loading Cloud Library…`; no QA folder or playlist was created. That pass exposed and fixed an unbounded receiver wait: Flowset now performs a non-mutating 15-second readiness preflight and displays actionable recovery text. The fixed behavior was verified live. |
 | Batch M3U8 | Keep; useful portable handoff | `playlistExport.test.ts`, `BatchDestinationPanel.interaction.test.tsx`, native tests | Destination-only configuration passed | Native save dialog wrote both playlists. Rekordbox imported the generated High Duration M3U8 and resolved both referenced files. |
 | MP3 export progress/report | Keep; long transcoding needs visible progress and an auditable report | `mp3Export.test.ts`, `AnalysisPipelineProgress.test.tsx`, native MP3 tests | Native-only state and explanatory boundary rendered | Native UI completed 4/4 tracks with 2 copies, 2 transcodes, 0 failures, and a manifest. FFprobe decoded every result with the expected fictional metadata. |
 | Spotify export | Keep as a separate confirmed operation | Spotify authorization/export tests; destination interaction test | Progressive setup screen appeared without initiating OAuth | No credentials, OAuth grants, or remote playlists were touched. |
@@ -62,12 +62,15 @@ Evidence directory:
 - `05-local-empty-error.png`: local-library empty/error state.
 - `06-apple-music-target.png`: installed Apple Music receiver surface.
 - `07-rekordbox-target.png`: installed Rekordbox collection/deck/metadata surface.
+- `08-rebuilt-native-app.png`: rebuilt native Flowset workspace before receiver QA.
 - `10-rekordbox-import-playback.png`: generated M3U8 imported with exact fictional metadata and loaded on deck 1.
 - `11-rekordbox-xml-handoff.png`: generated XML selected as Rekordbox's Imported Library.
 
-Browser console warnings/errors were empty. The page, sidebar, and preview scroll positions were
-measured independently. Focus was inspected after destination selection, Back, Escape, backdrop,
-and trigger restoration.
+Browser console warnings/errors were empty, and network inspection showed only the expected
+capabilities/provider/demo/preview requests with no unexpected failures. Loading and error states
+were exercised explicitly. The page, sidebar, and preview scroll positions were measured
+independently. Focus was inspected after destination selection, Back, Escape, backdrop, and trigger
+restoration.
 
 ## Native results, blockers, and artifacts
 
@@ -80,9 +83,15 @@ exactly named QA artifacts are:
 
 - source fixtures: `/Users/tleo/Downloads/[Sequence QA] Flowset Library 2026-08-03 2310`
 - export parent: `/Users/tleo/Downloads/[Sequence QA] Flowset Exports 2026-08-03 2310`
+- FLAC DJ bundle: `Flowset — [Sequence QA] Native recipe renamed 2026-08-03 2310`
+- MP3-compatibility DJ bundle: `Flowset — [Sequence QA] Native recipe renamed 2026-08-03 2310 (2)`
+- MP3 collection: `Flowset — [Sequence QA] Native recipe renamed 2026-08-03 2310 — MP3`
+- standalone playlists: `[Sequence QA] Native recipe renamed 2026-08-03 2310 — High Duration.m3u8` and `[Sequence QA] Native recipe renamed 2026-08-03 2310 — Low Duration.m3u8`
 - saved recipe: `[Sequence QA] Native recipe renamed 2026-08-03 2310`
+- recent-root workspace entry: the exact source-fixture path above
+- last-MP3-export workspace entry: the exact MP3-collection path above
 - Rekordbox playlist imported from M3U8: `[Sequence QA] Native recipe renamed 2026-08-03 2310 — High Duration`
-- Rekordbox Imported Library XML: the generated `Flowset — … - Rekordbox.xml` in the MP3-compatibility bundle
+- Rekordbox Imported Library preference: the generated `Flowset — [Sequence QA] Native recipe renamed 2026-08-03 2310 - Rekordbox.xml` inside the exact MP3-compatibility DJ bundle above
 
 These are retained because Rekordbox's verified playlist and XML bridge reference them. Removing the
 files would deliberately break that receiver evidence. The saved recipe and Rekordbox playlist are
@@ -95,3 +104,6 @@ app now handles it deterministically and safely, but a successful Apple Music cr
 claimed until Music itself becomes ready. The tiny synthetic audio fixtures are also unsuitable for
 TensorFlow mood inference; this is retained as verified error-state evidence rather than represented
 as a successful mood analysis.
+
+`11-rekordbox-xml-handoff.png` is retained as private local evidence and should not be published
+without redaction because Rekordbox's preference screen also displays unrelated local-library paths.
