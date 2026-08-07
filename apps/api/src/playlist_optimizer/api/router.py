@@ -27,6 +27,7 @@ from playlist_optimizer.models import (
     DemoPlaylist,
     LocalLibraryBrowseResponse,
     LocalLibraryRootRequest,
+    LocalPlaylistDiscoveryResponse,
     LocalPlaylistImportRequest,
     LocalPlaylistImportResponse,
     OptimizationRequest,
@@ -160,6 +161,25 @@ def browse_local_library(
         )
     try:
         return LocalLibraryBrowser(music_root=music_root).browse(path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/local-library/playlists", response_model=LocalPlaylistDiscoveryResponse)
+def discover_local_playlists(
+    http_request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    path: str = "",
+) -> LocalPlaylistDiscoveryResponse:
+    _require_loopback(http_request)
+    music_root = settings.essentia_audio_root
+    if music_root is None or not music_root.is_dir():
+        raise HTTPException(
+            status_code=503,
+            detail="ESSENTIA_AUDIO_ROOT must point to an available local music directory.",
+        )
+    try:
+        return LocalLibraryBrowser(music_root=music_root).discover_playlists(path)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

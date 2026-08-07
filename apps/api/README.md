@@ -53,9 +53,15 @@ desktop build provisions, bundles, and configures these artifacts automatically.
 ## Local playlist import
 
 Set `ESSENTIA_AUDIO_ROOT` to the common ancestor of the local folders and playlist files the app
-may read. `GET /api/v1/local-library/folders?path=...` lists safe immediate subfolders and direct
-audio-file counts without returning the host's absolute path. The frontend uses this endpoint to
-choose a music-library folder and present each of its subfolders as a playlist candidate.
+may read. `GET /api/v1/local-library/folders?path=...` lists safe immediate subfolders without
+returning the host's absolute path. The frontend uses this endpoint to choose a parent and present
+its immediate subfolders as folder-playlist candidates.
+
+`GET /api/v1/local-library/playlists?path=...` searches that root-relative parent recursively for
+`.m3u` and `.m3u8` files. The response contains stable, root-relative paths, display names, and
+source kinds. Discovery ignores hidden directories and symlinks, inspects at most 100,000 entries,
+and does not parse playlist contents. The configured root must also contain every audio file that
+an imported playlist is allowed to reference.
 
 `POST /api/v1/local-library/import` accepts a root-relative directory, `.m3u`, or
 `.m3u8` path:

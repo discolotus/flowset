@@ -245,11 +245,18 @@ tracks in 67.9 seconds. See the [Essentia evaluation](docs/essentia-evaluation.m
 
 ## Local folders and playlist files
 
-The frontend defaults to a local-folder workspace when `ESSENTIA_AUDIO_ROOT` is available. Its
-folder browser exposes only root-relative directories: navigate to a collection, choose it as the
-music library, and its immediate subfolders appear as playlists that can be imported and selected
-together. Imported tracks retain their local path mapping, so the selected provider can analyze
-them explicitly from the same screen. A demo-playlist tab remains available for UI development.
+The frontend defaults to a local-source workspace when `ESSENTIA_AUDIO_ROOT` is available. It
+offers two read-only sourcing methods. Folder playlists expose the chosen library's immediate
+subfolders as importable crates. Playlist-file discovery searches the chosen parent and every
+nested folder for `.m3u` and `.m3u8` files, then lets the user import only the candidates they want.
+Both methods feed the same multi-playlist selector and can be combined before analysis. Imported
+tracks retain their local path mapping, so the selected provider can analyze them explicitly from
+the same screen. A demo-playlist tab remains available for UI development.
+
+The playlist-file parent must be a common ancestor of both the playlist files and the audio paths
+they reference. Discovery returns only root-relative paths, ignores hidden folders and symlinks,
+and does not parse or modify playlist contents. `GET /api/v1/local-library/playlists?path=...`
+performs this bounded recursive scan; parsing remains deferred until the user adds a candidate.
 
 `POST /api/v1/local-library/import` turns a directory, `.m3u`, or `.m3u8` beneath
 `ESSENTIA_AUDIO_ROOT` into an `InputPlaylist`. Import reads tags and duration without running

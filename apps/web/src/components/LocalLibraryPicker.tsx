@@ -1,8 +1,18 @@
-import type { LocalLibraryBrowseResponse, LocalLibraryFolder } from "../lib/types";
+import type {
+  LocalLibraryBrowseResponse,
+  LocalLibraryFolder,
+  LocalPlaylistDiscoveryResponse,
+  LocalPlaylistFile,
+} from "../lib/types";
+
+export type LocalSourceMethod = "folders" | "playlist-files";
 
 interface LocalLibraryPickerProps {
   browser: LocalLibraryBrowseResponse | null;
   library: LocalLibraryBrowseResponse | null;
+  sourceMethod?: LocalSourceMethod;
+  playlistDiscovery?: LocalPlaylistDiscoveryResponse | null;
+  discoveringPlaylistFiles?: boolean;
   browsing: boolean;
   importingPaths: Set<string>;
   importedPaths: Set<string>;
@@ -15,7 +25,7 @@ interface LocalLibraryPickerProps {
   onSelectNativeFolder?: () => void;
   onSelectRecentRoot?: (path: string) => void;
   onChooseLibrary: () => void;
-  onImport: (folder: LocalLibraryFolder) => void;
+  onImport: (source: LocalLibraryFolder | LocalPlaylistFile) => void;
   onChangeLibrary: () => void;
 }
 
@@ -23,6 +33,7 @@ function FolderCandidates({
   library,
   importingPaths,
   importedPaths,
+  error,
   onImport,
   onChangeLibrary,
   disabled = false,
@@ -31,6 +42,7 @@ function FolderCandidates({
   | "library"
   | "importingPaths"
   | "importedPaths"
+  | "error"
   | "onImport"
   | "onChangeLibrary"
   | "disabled"
@@ -52,6 +64,7 @@ function FolderCandidates({
           Change folder
         </button>
       </header>
+      {error && <div className="notice" role="alert">{error}</div>}
       {library.folders.length === 0 ? (
         <p className="library-empty">This folder has no subfolders to use as playlists.</p>
       ) : (
@@ -85,10 +98,89 @@ function FolderCandidates({
   );
 }
 
+function PlaylistFileCandidates({
+  library,
+  playlistDiscovery,
+  discoveringPlaylistFiles = false,
+  importingPaths,
+  importedPaths,
+  error,
+  onImport,
+  onChangeLibrary,
+  disabled = false,
+}: Pick<
+  LocalLibraryPickerProps,
+  | "library"
+  | "playlistDiscovery"
+  | "discoveringPlaylistFiles"
+  | "importingPaths"
+  | "importedPaths"
+  | "error"
+  | "onImport"
+  | "onChangeLibrary"
+  | "disabled"
+>) {
+  if (!library) return null;
+  const playlists = playlistDiscovery?.playlists ?? [];
+  return (
+    <section className="library-candidates" aria-labelledby="playlist-file-candidates-heading">
+      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div>
+          <p className="eyebrow">Playlist files</p>
+          <h3 id="playlist-file-candidates-heading" className="mt-1 font-display text-lg font-semibold">
+            {playlistDiscovery?.search_name ?? library.current_name}
+          </h3>
+          <p className="mt-2 max-w-2xl text-xs leading-5 text-mist/55">
+            M3U and M3U8 files are found recursively at every nesting level. Choose a common parent that also contains their referenced audio files.
+          </p>
+        </div>
+        <button type="button" className="secondary-button" disabled={disabled} onClick={onChangeLibrary}>
+          Change folder
+        </button>
+      </header>
+      {error && <div className="notice" role="alert">{error}</div>}
+      {discoveringPlaylistFiles ? (
+        <p className="library-empty" aria-live="polite">Searching for playlist files…</p>
+      ) : playlistDiscovery && playlists.length === 0 ? (
+        <p className="library-empty">No .m3u or .m3u8 playlist files were found under this folder.</p>
+      ) : playlistDiscovery ? (
+        <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {playlists.map((playlist) => {
+            const importing = importingPaths.has(playlist.path);
+            const imported = importedPaths.has(playlist.path);
+            return (
+              <article key={playlist.path} className={`library-playlist ${imported ? "imported" : ""}`}>
+                <span className="library-folder-icon" aria-hidden="true">♫</span>
+                <span className="min-w-0 flex-1">
+                  <strong className="block truncate font-display text-sm text-white/85">{playlist.name}</strong>
+                  <small className="mt-1 block truncate font-mono text-[10px] text-mist/45" title={playlist.path}>
+                    {playlist.source_kind.toUpperCase()} · {playlist.path}
+                  </small>
+                </span>
+                <button
+                  type="button"
+                  className="compact-button"
+                  disabled={disabled || importing || imported}
+                  onClick={() => onImport(playlist)}
+                >
+                  {importing ? "Importing…" : imported ? "Added" : "Add playlist"}
+                </button>
+              </article>
+            );
+          })}
+        </div>
+      ) : !error ? (
+        <p className="library-empty" aria-live="polite">Preparing playlist search…</p>
+      ) : null}
+    </section>
+  );
+}
+
 export function LocalLibraryPicker(props: LocalLibraryPickerProps) {
   const {
     browser,
     library,
+    sourceMethod = "folders",
     browsing,
     error,
     nativeFolderSelection = false,
@@ -100,7 +192,13 @@ export function LocalLibraryPicker(props: LocalLibraryPickerProps) {
     onSelectRecentRoot,
     onChooseLibrary,
   } = props;
-  if (library) return <FolderCandidates {...props} />;
+  if (library) {
+    return sourceMethod === "playlist-files"
+      ? <PlaylistFileCandidates {...props} />
+      : <FolderCandidates {...props} />;
+  }
+
+  const selectingPlaylistFiles = sourceMethod === "playlist-files";
 
   return (
     <section className="library-browser" aria-labelledby="library-browser-heading">
@@ -108,10 +206,12 @@ export function LocalLibraryPicker(props: LocalLibraryPickerProps) {
         <div>
           <p className="eyebrow">Local source</p>
           <h3 id="library-browser-heading" className="mt-1 font-display text-lg font-semibold">
-            Select a music library folder
+            {selectingPlaylistFiles ? "Select a parent folder" : "Select a music library folder"}
           </h3>
           <p className="mt-2 max-w-2xl text-xs leading-5 text-mist/55">
-            Browse inside the server-approved music root. Absolute paths remain private and inaccessible to the browser.
+            {selectingPlaylistFiles
+              ? "Playlist files will be found recursively beneath this folder. It should also contain the audio paths referenced by those files."
+              : "Browse inside the server-approved music root. Absolute paths remain private and inaccessible to the browser."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -127,7 +227,7 @@ export function LocalLibraryPicker(props: LocalLibraryPickerProps) {
           )}
           {browser && (
             <button type="button" className="primary-button" disabled={disabled} onClick={onChooseLibrary}>
-              Use “{browser.current_name}”
+              {selectingPlaylistFiles ? "Search" : "Use"} “{browser.current_name}”
             </button>
           )}
         </div>
@@ -191,12 +291,18 @@ export function LocalLibraryPicker(props: LocalLibraryPickerProps) {
               </button>
             ))}
             {browser.folders.length === 0 && (
-              <p className="library-empty">No subfolders found. You can still use this folder as the library.</p>
+              <p className="library-empty">
+                No subfolders found. You can still {selectingPlaylistFiles ? "search" : "use"} this folder.
+              </p>
             )}
           </div>
         </div>
       ) : nativeFolderSelection ? (
-        <p className="library-empty">Choose a folder to use as your local music library.</p>
+        <p className="library-empty">
+          {selectingPlaylistFiles
+            ? "Choose a parent folder to search for playlist files."
+            : "Choose a folder to use as your local music library."}
+        </p>
       ) : null}
     </section>
   );

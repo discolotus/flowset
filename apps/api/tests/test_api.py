@@ -136,6 +136,44 @@ def test_local_library_folder_endpoint_lists_subfolders(tmp_path: Path) -> None:
     }
 
 
+def test_local_playlist_discovery_endpoint_finds_nested_m3u_files(tmp_path: Path) -> None:
+    music_root = tmp_path / "Music"
+    playlist_folder = music_root / "Playlists" / "Archived" / "2025"
+    playlist_folder.mkdir(parents=True)
+    (music_root / "Playlists" / "Current.m3u").write_text("track.mp3\n", encoding="utf-8")
+    (playlist_folder / "Closing Set.m3u8").write_text("#EXTM3U\n", encoding="utf-8")
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        essentia_audio_root=music_root,
+        _env_file=None,
+    )
+    try:
+        response = client.get(
+            "/api/v1/local-library/playlists",
+            params={"path": "Playlists"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "root_name": "Music",
+        "search_path": "Playlists",
+        "search_name": "Playlists",
+        "playlists": [
+            {
+                "path": "Playlists/Archived/2025/Closing Set.m3u8",
+                "name": "Closing Set",
+                "source_kind": "m3u8",
+            },
+            {
+                "path": "Playlists/Current.m3u",
+                "name": "Current",
+                "source_kind": "m3u",
+            },
+        ],
+    }
+
+
 def test_selecting_a_local_library_root_updates_subsequent_requests(
     tmp_path: Path, monkeypatch
 ) -> None:

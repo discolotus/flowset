@@ -14,6 +14,8 @@ from playlist_optimizer.models import (
     LocalImportProblem,
     LocalLibraryBrowseResponse,
     LocalLibraryFolder,
+    LocalPlaylistDiscoveryResponse,
+    LocalPlaylistFile,
     LocalPlaylistImportRequest,
     LocalPlaylistImportResponse,
     LocalPlaylistSourceKind,
@@ -59,7 +61,7 @@ _YEAR = re.compile(r"(?:^|\D)((?:19|20)\d{2})(?:\D|$)")
 _ISRC = re.compile(r"^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$")
 _INCOMPLETE_SUFFIXES = frozenset({".incomplete", ".part", ".tmp"})
 _MAX_PLAYLIST_ENTRIES = 5000
-_MAX_DIRECTORY_ENTRIES_SCANNED = 20_000
+_MAX_DIRECTORY_ENTRIES_SCANNED = 100_000
 _MAX_M3U_BYTES = 5 * 1024 * 1024
 _MAX_BROWSE_ENTRIES = 20_000
 
@@ -100,7 +102,7 @@ MetadataReader = Callable[[Path], LocalTrackMetadata]
 
 
 class LocalLibraryBrowser:
-    """List safe subdirectories beneath the configured music root without exposing host paths."""
+    """Browse safe local sources beneath one root without exposing host paths."""
 
     def __init__(self, *, music_root: Path) -> None:
         self._music_root = music_root.resolve()
@@ -144,6 +146,78 @@ class LocalLibraryBrowser:
             current_name=current.name,
             parent_path=parent_path,
             folders=folders,
+        )
+
+    def discover_playlists(self, path: str = "") -> LocalPlaylistDiscoveryResponse:
+        """Find supported playlist files recursively beneath one safe directory."""
+
+        current = self._resolve_directory(path)
+        playlists: list[LocalPlaylistFile] = []
+        scanned_entries = 0
+
+        def raise_walk_error(error: OSError) -> None:
+            raise error
+
+        try:
+            for directory, child_directories, filenames in os.walk(
+                current,
+                topdown=True,
+                onerror=raise_walk_error,
+                followlinks=False,
+            ):
+                directory_path = Path(directory)
+                safe_child_directories: list[str] = []
+                for name in child_directories:
+                    scanned_entries += 1
+                    if scanned_entries > _MAX_DIRECTORY_ENTRIES_SCANNED:
+                        raise ValueError(
+                            "A local playlist-file scan can inspect at most "
+                            f"{_MAX_DIRECTORY_ENTRIES_SCANNED} entries; "
+                            "choose a narrower parent folder"
+                        )
+                    child = directory_path / name
+                    if name.startswith(".") or child.is_symlink():
+                        continue
+                    safe_child_directories.append(name)
+                child_directories[:] = safe_child_directories
+
+                for filename in filenames:
+                    scanned_entries += 1
+                    if scanned_entries > _MAX_DIRECTORY_ENTRIES_SCANNED:
+                        raise ValueError(
+                            "A local playlist-file scan can inspect at most "
+                            f"{_MAX_DIRECTORY_ENTRIES_SCANNED} entries; "
+                            "choose a narrower parent folder"
+                        )
+                    if filename.startswith("."):
+                        continue
+                    playlist_path = directory_path / filename
+                    suffix = playlist_path.suffix.casefold()
+                    if suffix not in SUPPORTED_PLAYLIST_EXTENSIONS or playlist_path.is_symlink():
+                        continue
+                    try:
+                        resolved = playlist_path.resolve(strict=True)
+                        resolved.relative_to(self._music_root)
+                    except (FileNotFoundError, OSError, ValueError):
+                        continue
+                    if not resolved.is_file():
+                        continue
+                    playlists.append(
+                        LocalPlaylistFile(
+                            path=self._relative_path(resolved),
+                            name=resolved.stem,
+                            source_kind="m3u8" if suffix == ".m3u8" else "m3u",
+                        )
+                    )
+        except OSError as exc:
+            raise ValueError("Local playlist-file directory could not be read") from exc
+
+        playlists.sort(key=lambda playlist: (playlist.path.casefold(), playlist.path))
+        return LocalPlaylistDiscoveryResponse(
+            root_name=self._music_root.name,
+            search_path=self._relative_path(current),
+            search_name=current.name,
+            playlists=playlists,
         )
 
     def _resolve_directory(self, value: str) -> Path:

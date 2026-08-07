@@ -1,7 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import type { LocalLibraryBrowseResponse } from "../lib/types";
+import type {
+  LocalLibraryBrowseResponse,
+  LocalPlaylistDiscoveryResponse,
+} from "../lib/types";
 import { LocalLibraryPicker } from "./LocalLibraryPicker";
 
 const listing: LocalLibraryBrowseResponse = {
@@ -22,6 +25,24 @@ const handlers = {
   onChooseLibrary: () => undefined,
   onImport: () => undefined,
   onChangeLibrary: () => undefined,
+};
+
+const playlistDiscovery: LocalPlaylistDiscoveryResponse = {
+  root_name: "Music Library",
+  search_path: "DJ Sets",
+  search_name: "DJ Sets",
+  playlists: [
+    {
+      path: "DJ Sets/2025/Favorites.m3u",
+      name: "Favorites",
+      source_kind: "m3u",
+    },
+    {
+      path: "DJ Sets/2026/August/Main Set.m3u8",
+      name: "Main Set",
+      source_kind: "m3u8",
+    },
+  ],
 };
 
 describe("LocalLibraryPicker", () => {
@@ -82,5 +103,46 @@ describe("LocalLibraryPicker", () => {
     expect(markup).toContain("Recent parent folders");
     expect(markup).toContain("/Volumes/External4TB/Music");
     expect(markup).toContain("Choose a folder to use as your local music library");
+  });
+
+  it("presents recursively discovered playlist files with their relative paths", () => {
+    const markup = renderToStaticMarkup(
+      <LocalLibraryPicker
+        browser={listing}
+        library={listing}
+        sourceMethod="playlist-files"
+        playlistDiscovery={playlistDiscovery}
+        browsing={false}
+        importingPaths={new Set(["DJ Sets/2025/Favorites.m3u"])}
+        importedPaths={new Set(["DJ Sets/2026/August/Main Set.m3u8"])}
+        error={null}
+        {...handlers}
+      />,
+    );
+
+    expect(markup).toContain("found recursively at every nesting level");
+    expect(markup).toContain("DJ Sets/2025/Favorites.m3u");
+    expect(markup).toContain("DJ Sets/2026/August/Main Set.m3u8");
+    expect(markup).toContain("M3U8");
+    expect(markup).toContain("Importing…");
+    expect(markup).toContain("Added");
+  });
+
+  it("shows a clear empty state when recursive discovery finds no playlists", () => {
+    const markup = renderToStaticMarkup(
+      <LocalLibraryPicker
+        browser={listing}
+        library={listing}
+        sourceMethod="playlist-files"
+        playlistDiscovery={{ ...playlistDiscovery, playlists: [] }}
+        browsing={false}
+        importingPaths={new Set()}
+        importedPaths={new Set()}
+        error={null}
+        {...handlers}
+      />,
+    );
+
+    expect(markup).toContain("No .m3u or .m3u8 playlist files were found under this folder");
   });
 });
