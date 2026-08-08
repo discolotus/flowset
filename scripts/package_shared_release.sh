@@ -20,4 +20,4 @@ sha256=$(cut -d ' ' -f 1 "$artifact.sha256")
 ./scripts/generate_homebrew_cask.sh \
   --version "$version" \
   --sha256 "$sha256" \
-  --output dist/release/playlist-optimizer.rb
+  --output dist/release/flowset.rb

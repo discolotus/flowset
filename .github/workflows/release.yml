@@ -15,6 +15,6 @@ jobs:
       test_command: ./scripts/verify_release_ci.sh
       package_command: ./scripts/package_shared_release.sh
       artifact_path: dist/release/Flowset-{version}-arm64.zip
-      cask_path: dist/release/playlist-optimizer.rb
+      cask_path: dist/release/flowset.rb
       prerelease: true
       allow_initial: true

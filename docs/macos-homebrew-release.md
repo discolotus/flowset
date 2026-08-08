@@ -24,12 +24,15 @@ prerelease contains:
 
 - `Flowset-<tag-without-v>-arm64.zip`
 - the matching `.sha256` file
-- a generated `playlist-optimizer.rb` Homebrew cask
+- a generated `flowset.rb` Homebrew cask
 
 The zip contains exactly one `Flowset.app`. Its bundle identifier remains
 `com.discolotus.playlist-optimizer` so existing installs, permissions, and app data continue to
-resolve to the same application. Its minimum macOS version is 15.2. The Homebrew cask token also
-remains `playlist-optimizer` for upgrade compatibility.
+resolve to the same application. Its minimum macOS version is 15.2. The Homebrew cask token is
+`flowset`. The previous `playlist-optimizer` token is preserved by the tap's `cask_renames.json`
+entry, which Homebrew reads to populate the cask's `old_tokens` and to migrate an existing
+`playlist-optimizer` Caskroom directory on the next `brew upgrade`. `old_tokens` is not a cask DSL
+stanza; it is derived from the tap, so the generated cask file must not declare it.
 
 ## Local release rehearsal
 
@@ -72,27 +75,30 @@ app-specific dependency setup, verification commands, and package construction.
 
 ## Homebrew tap update
 
-The separate public repository `discolotus/homebrew-tap` owns
-`Casks/playlist-optimizer.rb`. After a GitHub prerelease is available:
+The separate public repository `discolotus/homebrew-tap` owns `Casks/flowset.rb` and the
+`cask_renames.json` entry that maps the retired `playlist-optimizer` token onto it. After a GitHub
+prerelease is available:
 
 ```bash
 ./scripts/generate_homebrew_cask.sh \
   --version 0.2.0-preview.4 \
   --sha256 "$(cut -d ' ' -f 1 \
     dist/release/Flowset-0.2.0-preview.4-arm64.zip.sha256)" \
-  --output /path/to/homebrew-tap/Casks/playlist-optimizer.rb
+  --output /path/to/homebrew-tap/Casks/flowset.rb
 
-brew audit --cask --strict /path/to/homebrew-tap/Casks/playlist-optimizer.rb
-brew install --cask /path/to/homebrew-tap/Casks/playlist-optimizer.rb
+brew audit --cask --strict /path/to/homebrew-tap/Casks/flowset.rb
+brew install --cask /path/to/homebrew-tap/Casks/flowset.rb
 ```
 
-The `discolotus/homebrew-tap` scheduled reusable workflow imports the published
-`playlist-optimizer.rb` asset listed in `release-sources.json`. Once that tap update is pushed,
+The `discolotus/homebrew-tap` scheduled reusable workflow imports the published `flowset.rb` asset
+listed in `release-sources.json`. Releases published before the rename only carry a
+`playlist-optimizer.rb` asset, so the tap's `release-sources.json` must not be pointed at
+`flowset.rb` until a release actually publishes that asset name. Once that tap update is pushed,
 users install this explicitly unsigned preview with:
 
 ```bash
 brew tap discolotus/tap
-brew install --cask playlist-optimizer
+brew install --cask flowset
 ```
 
 Because the app has no Developer ID signature, macOS will block its first launch. Users should
