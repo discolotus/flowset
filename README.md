@@ -164,8 +164,12 @@ ID or notarized. After the Flowset preview release is published:
 
 ```bash
 brew tap discolotus/tap
-brew install --cask playlist-optimizer
+brew install --cask flowset
 ```
+
+Installs made before the cask was renamed used the `playlist-optimizer` token. The tap's
+`cask_renames.json` maps that old token to `flowset`, so `brew upgrade` migrates them in place and
+no reinstall is required.
 
 On first launch, macOS will block the app because Apple Developer Program credentials are not yet
 available. Open **System Settings → Privacy & Security**, confirm that the blocked app is Flowset,

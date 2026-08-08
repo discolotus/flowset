@@ -17,7 +17,6 @@ available under `src-tauri/icons/alternatives/`.
 The following identifiers intentionally retain their pre-rebrand values:
 
 - bundle identifier: `com.discolotus.playlist-optimizer`;
-- Homebrew cask token and filename: `playlist-optimizer` / `playlist-optimizer.rb`;
 - repository URL: `discolotus/spotify-playlist-optimizer`;
 - native binary, sidecar, Rust crate, Python package, and npm workspace identifiers;
 - API health service identifier: `playlist-optimizer-api`;
@@ -29,9 +28,17 @@ The following identifiers intentionally retain their pre-rebrand values:
 Flowset adds `FLOWSET_FFMPEG_PATH` as the preferred visible override without invalidating either
 legacy alias.
 
+The Homebrew cask token and filename are the one exception. They moved to `flowset` /
+`flowset.rb`, because Homebrew already carries a supported rename path: the tap's
+`cask_renames.json` maps `playlist-optimizer` onto `flowset`, which populates the cask's
+`old_tokens` and migrates an existing Caskroom directory on the next `brew upgrade`. The install
+command users are told is therefore `brew install --cask flowset`. Every other identifier above
+stays frozen, because none of them has an equivalent supported migration.
+
 ## Consequences
 
-Existing Homebrew users can upgrade the same cask, macOS continues resolving the app to the same
-permissions and app-data directory, saved recipes and folder history remain readable, and existing
-analysis caches and export consumers do not require migration. New release artifacts and the
+Existing Homebrew users are migrated to the renamed cask by `brew upgrade` without reinstalling,
+macOS continues resolving the app to the same permissions and app-data directory, saved recipes and
+folder history remain readable, and existing analysis caches and export consumers do not require
+migration. New release artifacts and the
 installed application are named `Flowset`, while the stable installation channel remains intact.

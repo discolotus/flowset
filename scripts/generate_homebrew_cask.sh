@@ -61,7 +61,7 @@ render() {
   cat <<EOF
 # frozen_string_literal: true
 
-cask "playlist-optimizer" do
+cask "flowset" do
   version "$version"
   sha256 "$sha256"
 
@@ -86,7 +86,7 @@ cask "playlist-optimizer" do
     This is an unsigned, non-commercial preview. It is ad-hoc signed but has
     not been notarized by Apple. Install it with:
 
-      brew install --cask playlist-optimizer
+      brew install --cask flowset
 
     Before first launch, review the source and release checksum. macOS will
     require an explicit "Open Anyway" approval in Privacy & Security:

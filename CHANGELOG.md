@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0-preview.5] - 2026-08-07
+
+- Rename the Homebrew cask token and generated cask filename to `flowset` so the install command
+  matches the product name, and rely on the tap's `cask_renames.json` to migrate existing
+  `playlist-optimizer` installs on the next `brew upgrade`.
+- Keep the bundle identifier, binary, crate, package, workspace, cache, and repository identifiers
+  unchanged.
+
 ## [0.2.0-preview.4] - 2026-08-06
 
 - Add recursive `.m3u` and `.m3u8` discovery beneath a user-selected parent folder and feed
