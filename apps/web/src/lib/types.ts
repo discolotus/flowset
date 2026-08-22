@@ -76,7 +76,16 @@ export interface Track {
   semantic_scores?: SemanticScore[];
 }
 
-export interface SemanticScoreProvenance { backend: string; model: string }
+export interface SemanticRepresentationIdentity {
+  layer: string;
+  pooling: string;
+  segment: string;
+}
+export interface SemanticScoreProvenance {
+  backend: string;
+  model: string;
+  representation?: SemanticRepresentationIdentity | null;
+}
 export interface SemanticScore {
   key: string;
   label: string;
@@ -92,6 +101,7 @@ export interface SemanticBackendCapabilities {
   embedding_dimension?: number | null;
   embedding_representation?: string | null;
   max_embedding_batch: number;
+  default_representation?: SemanticRepresentationIdentity | null;
 }
 export interface SemanticRankResponse {
   backend: SemanticBackendCapabilities;

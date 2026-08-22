@@ -345,7 +345,7 @@ describe("App behavior", () => {
     await waitFor(() => expect(previewRequests.length).toBeGreaterThan(0));
 
     await user.click(screen.getByRole("button", { name: "Semantic Lab" }));
-    expect((await screen.findByLabelText(/Local Main Track/) as HTMLInputElement).checked).toBe(true);
+    expect((await screen.findByRole("checkbox", { name: /Local Main Track/ }) as HTMLInputElement).checked).toBe(true);
     await user.type(screen.getByLabelText("Prompt 1"), "focus");
     const previewsBeforeRun = previewRequests.length;
     await user.click(screen.getByRole("button", { name: "Run prompt matrix" }));

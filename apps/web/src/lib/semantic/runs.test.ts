@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { SemanticBackendCapabilities, SemanticRankResponse, Track } from "../types";
 import type { SemanticExperimentRunV1 } from "./types";
-import { createTextRankingRun, fingerprintTrackIds, MAX_RECENT_SEMANTIC_RUNS, rememberSemanticRun } from "./runs";
+import { createReferenceRankingRun, createTextRankingRun, fingerprintTrackIds, MAX_RECENT_SEMANTIC_RUNS, rememberSemanticRun } from "./runs";
 
 const backend: SemanticBackendCapabilities = { id: "local-clap", display_name: "Local CLAP", model: "clap-v1", available: true, requires_local_audio: true, max_tracks: 20, max_labels: 20, max_embedding_batch: 20, capabilities: ["text_similarity"] };
 const track = (id: string): Track => ({ id, name: `Track ${id}`, artist: "Lab Artist", album: "Lab Album", duration_ms: 120000, explicit: false, genres: [] });
@@ -32,6 +32,26 @@ describe("semantic experiment runs", () => {
     const runs = Array.from({ length: MAX_RECENT_SEMANTIC_RUNS + 2 }, (_, index) => ({ ...base, id: `run-${index}` }));
     expect(rememberSemanticRun([], runs[0])).toHaveLength(1);
     expect(runs.reduce<readonly SemanticExperimentRunV1[]>((recent, run) => rememberSemanticRun(recent, run), [])).toHaveLength(MAX_RECENT_SEMANTIC_RUNS);
+  });
+
+  it("records a reference run with an immutable representation identity", () => {
+    const representation = { layer: "last_hidden_state", pooling: "mean", segment: "whole_track" };
+    const mert = { ...backend, id: "local-mert", model: "mert-v1", capabilities: ["reference_similarity", "embedding_extraction"] as const, default_representation: representation };
+    const response: SemanticRankResponse = {
+      backend: mert,
+      score_key: "semantic:neighbors",
+      score_keys_by_normalized_label: { similar: "semantic:neighbors" },
+      results: [{ track_id: "a", status: "complete", scores: [{ key: "semantic:neighbors", label: "similar", normalized_label: "similar", score: 1, provenance: { backend: "local-mert", model: "mert-v1", representation } }] }],
+      missing_track_ids: [],
+    };
+    const run = createReferenceRankingRun({ id: "reference-1", referenceTrack: track("a"), tracks: [track("a")], sourceTrackIds: ["a"], backend: mert, response, createdAt: "2026-08-21T10:00:00.000Z", completedAt: "2026-08-21T10:00:01.000Z" });
+    representation.pooling = "changed";
+    expect(run.kind).toBe("reference-ranking");
+    expect(run.referenceTrackId).toBe("a");
+    expect(run.query).toBe("Neighbors of Track a — Lab Artist");
+    expect(run.representation).toEqual({ layer: "last_hidden_state", pooling: "mean", segment: "whole_track" });
+    expect(run.results[0].scores[0].provenance.representation?.pooling).toBe("mean");
+    expect(Object.isFrozen(run.representation)).toBe(true);
   });
 
   it("keeps missing selected tracks visible as unavailable results", () => {

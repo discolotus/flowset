@@ -279,8 +279,17 @@ def rank_semantic_reference(
         _validate_embeddings(embeddings, settings.semantic_max_embedding_dimension)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    key = semantic_score_key(capabilities.id, capabilities.model, label)
-    provenance = SemanticScoreProvenance(backend=capabilities.id, model=capabilities.model)
+    key = semantic_score_key(
+        capabilities.id,
+        capabilities.model,
+        label,
+        capabilities.default_representation,
+    )
+    provenance = SemanticScoreProvenance(
+        backend=capabilities.id,
+        model=capabilities.model,
+        representation=capabilities.default_representation,
+    )
     results = [
         SemanticTrackResult(
             track_id=track_id,
