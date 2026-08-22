@@ -44,6 +44,20 @@ make test-semantic-models-smoke
 
 Each runtime is loaded once per backend instance and remains offline during API requests.
 
+`POST /api/v1/semantic/embeddings` accepts only root-relative paths beneath the configured
+semantic audio root. Each backend advertises a bounded `max_embedding_batch`, a checkpoint-derived
+model identity, and an embedding representation identity. The web client acquires larger selected
+sets in sequential chunks and rejects chunks whose model, representation, or dimension differs.
+
+Successful per-track embeddings are reused from a bounded process-local LRU cache. A cache key
+contains the backend, model revision, representation, authorized root-relative path, file size,
+and nanosecond modification time. Concurrent requests for the same key share one inference.
+Responses report per-track `hit`, `miss`, or `deduplicated` state plus aggregate cache counts;
+decode and malformed-vector failures stay visible beside the affected track. The cache is never
+written to disk, and raw vectors are not added to tracks, workspace state, browser storage,
+playlist exports, or remote calls. `SEMANTIC_EMBEDDING_CACHE_ENTRIES` controls the LRU bound and
+defaults to 128.
+
 ## Audio-feature providers
 
 `GET /api/v1/audio-features/providers` reports the available providers and their setup

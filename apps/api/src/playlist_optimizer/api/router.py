@@ -38,6 +38,7 @@ from playlist_optimizer.models import (
     RecipePreviewResponse,
     SemanticBackendCapabilities,
     SemanticEmbedding,
+    SemanticEmbeddingCacheMetadata,
     SemanticEmbeddingRequest,
     SemanticEmbeddingResponse,
     SemanticRankedScore,
@@ -60,6 +61,11 @@ from playlist_optimizer.semantic import (
     get_semantic_registry,
     normalize_semantic_label,
     semantic_score_key,
+)
+from playlist_optimizer.semantic_embedding_cache import (
+    EmbeddingCacheKey,
+    EmbeddingInferenceCache,
+    get_semantic_embedding_cache,
 )
 from playlist_optimizer.spotify import SpotifyService, get_spotify_service
 
@@ -305,6 +311,7 @@ def extract_semantic_embeddings(
     http_request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
     registry: Annotated[SemanticBackendRegistry, Depends(get_semantic_registry)],
+    cache: Annotated[EmbeddingInferenceCache, Depends(get_semantic_embedding_cache)],
 ) -> SemanticEmbeddingResponse:
     _require_loopback(http_request)
     backend = registry.get(payload.backend_id)
@@ -317,26 +324,108 @@ def extract_semantic_embeddings(
         )
     if "embedding_extraction" not in capabilities.capabilities:
         raise HTTPException(status_code=422, detail="Selected backend does not expose embeddings")
-    if len(payload.audio_paths) > settings.semantic_max_embeddings:
+    batch_limit = min(capabilities.max_embedding_batch, settings.semantic_max_embeddings)
+    if len(payload.audio_paths) > batch_limit:
         raise HTTPException(status_code=422, detail="Embedding request exceeds batch limit")
     paths = _resolve_semantic_paths(payload.audio_paths, settings)
-    try:
-        rows = backend.embed(paths)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    if len(rows) != len(paths):
-        raise HTTPException(status_code=502, detail="Semantic backend returned an invalid batch")
-    try:
-        dimension = _validate_embeddings(rows, settings.semantic_max_embedding_dimension)
-    except ValueError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    representation = capabilities.embedding_representation or "default-audio-v1"
+    root = settings.semantic_audio_root or settings.clap_audio_root or settings.essentia_audio_root
+    assert root is not None
+    authorized_root = root.resolve()
+    results: list[SemanticEmbedding] = []
+    failed_track_ids: list[str] = []
+    hits = misses = deduplicated = evictions = 0
+    dimension: int | None = None
+
+    for (track_id, _), path in zip(payload.audio_paths.items(), paths, strict=True):
+        try:
+            stat = path.stat()
+            key = EmbeddingCacheKey(
+                backend_id=capabilities.id,
+                model=capabilities.model,
+                representation=representation,
+                relative_path=path.relative_to(authorized_root).as_posix(),
+                size=stat.st_size,
+                modified_time_ns=stat.st_mtime_ns,
+            )
+        except (OSError, ValueError):
+            failed_track_ids.append(track_id)
+            results.append(
+                SemanticEmbedding(
+                    track_id=track_id,
+                    status="failed",
+                    error="The authorized audio file is no longer available.",
+                )
+            )
+            continue
+
+        def compute(path: Path = path, expected_stat: os.stat_result = stat) -> list[float]:
+            rows = backend.embed([path])
+            if len(rows) != 1:
+                raise ValueError("Semantic backend returned an invalid embedding batch")
+            _validate_embeddings(rows, settings.semantic_max_embedding_dimension)
+            current_stat = path.stat()
+            if (
+                current_stat.st_size != expected_stat.st_size
+                or current_stat.st_mtime_ns != expected_stat.st_mtime_ns
+            ):
+                raise RuntimeError("Audio changed during embedding inference")
+            return rows[0]
+
+        try:
+            lookup = cache.get_or_compute(key, compute)
+            row_dimension = len(lookup.values)
+            if dimension is not None and row_dimension != dimension:
+                raise ValueError("Embedding dimension does not match the selected representation")
+            dimension = row_dimension
+            hits += lookup.status == "hit"
+            misses += lookup.status == "miss"
+            deduplicated += lookup.status == "deduplicated"
+            evictions += lookup.evictions
+            results.append(
+                SemanticEmbedding(
+                    track_id=track_id,
+                    status="complete",
+                    values=lookup.values,
+                    cache_status=lookup.status,
+                )
+            )
+        except RuntimeError:
+            failed_track_ids.append(track_id)
+            results.append(
+                SemanticEmbedding(
+                    track_id=track_id,
+                    status="failed",
+                    error="The backend could not extract this track.",
+                )
+            )
+        except (OSError, TypeError, ValueError):
+            failed_track_ids.append(track_id)
+            results.append(
+                SemanticEmbedding(
+                    track_id=track_id,
+                    status="failed",
+                    error="The backend returned an invalid embedding for this track.",
+                )
+            )
+
+    response_backend = capabilities.model_copy(
+        update={"embedding_dimension": dimension, "max_embedding_batch": batch_limit}
+    )
     return SemanticEmbeddingResponse(
-        backend=capabilities,
+        backend=response_backend,
+        representation=representation,
         dimension=dimension,
-        embeddings=[
-            SemanticEmbedding(track_id=track_id, values=row)
-            for track_id, row in zip(payload.audio_paths, rows, strict=True)
-        ],
+        embeddings=results,
+        failed_track_ids=failed_track_ids,
+        cache=SemanticEmbeddingCacheMetadata(
+            hits=hits,
+            misses=misses,
+            deduplicated=deduplicated,
+            evictions=evictions,
+            entries=cache.size,
+            capacity=cache.capacity,
+        ),
     )
 
 

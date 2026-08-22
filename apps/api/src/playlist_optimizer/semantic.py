@@ -34,11 +34,19 @@ class _ConfiguredBackend:
     license_note: str
     checkpoint_setting: str
     runtime_modules: tuple[str, ...]
+    embedding_representation: str | None = None
 
-    def __init__(self, checkpoint: Path | None, max_tracks: int = 100, max_labels: int = 20):
+    def __init__(
+        self,
+        checkpoint: Path | None,
+        max_tracks: int = 100,
+        max_labels: int = 20,
+        max_embedding_batch: int = 20,
+    ):
         self.checkpoint = checkpoint
         self.max_tracks = max_tracks
         self.max_labels = max_labels
+        self.max_embedding_batch = max_embedding_batch
 
     def capabilities(self) -> SemanticBackendCapabilities:
         checkpoint_ready = bool(self.checkpoint and self.checkpoint.exists())
@@ -60,6 +68,8 @@ class _ConfiguredBackend:
             max_labels=self.max_labels,
             capabilities=self.capability_names,
             license_note=self.license_note,
+            embedding_representation=self.embedding_representation,
+            max_embedding_batch=self.max_embedding_batch,
         )
 
     def _require_checkpoint(self) -> Path:
@@ -133,9 +143,7 @@ class LocalClapBackend(_ConfiguredBackend):
         except ImportError as exc:
             raise RuntimeError("Install Flowset's optional CLAP dependencies") from exc
         try:
-            model = laion_clap.CLAP_Module(
-                enable_fusion=False, amodel="HTSAT-tiny", device="cpu"
-            )
+            model = laion_clap.CLAP_Module(enable_fusion=False, amodel="HTSAT-tiny", device="cpu")
             model.load_ckpt(str(checkpoint), verbose=False)
             model.model.eval()
         except (OSError, RuntimeError, ValueError) as exc:
@@ -174,6 +182,7 @@ class LocalMuqMulanBackend(_ConfiguredBackend):
     checkpoint_setting = "MUQ_MULAN_CHECKPOINT"
     runtime_modules = ("librosa", "muq", "torch")
     license_note = "Published MuQ-MuLan weights are CC-BY-NC-4.0 and are not bundled by Flowset."
+    embedding_representation = "muq-mulan-audio-30s-24khz-v1"
 
     @cached_property
     def _model(self):
@@ -257,6 +266,7 @@ class LocalMertBackend(_ConfiguredBackend):
         "Published MERT weights are CC-BY-NC-4.0 and are not bundled by Flowset; trusted local "
         "checkpoint code may execute. MERT is not used for text scoring."
     )
+    embedding_representation = "mert-last-hidden-mean-30s-v1"
 
     def rank(self, audio_paths: list[Path], labels: list[str]) -> list[SemanticRankResult]:
         raise RuntimeError("MERT does not support text similarity")
@@ -328,12 +338,23 @@ def get_semantic_registry() -> SemanticBackendRegistry:
     return SemanticBackendRegistry(
         [
             LocalClapBackend(
-                settings.clap_checkpoint, settings.clap_max_tracks, settings.clap_max_labels
+                settings.clap_checkpoint,
+                settings.clap_max_tracks,
+                settings.clap_max_labels,
+                settings.semantic_max_embeddings,
             ),
             LocalMuqMulanBackend(
-                settings.muq_mulan_checkpoint, settings.clap_max_tracks, settings.clap_max_labels
+                settings.muq_mulan_checkpoint,
+                settings.clap_max_tracks,
+                settings.clap_max_labels,
+                settings.semantic_max_embeddings,
             ),
-            LocalMertBackend(settings.mert_checkpoint, settings.clap_max_tracks, 1),
+            LocalMertBackend(
+                settings.mert_checkpoint,
+                settings.clap_max_tracks,
+                1,
+                settings.semantic_max_embeddings,
+            ),
         ]
     )
 

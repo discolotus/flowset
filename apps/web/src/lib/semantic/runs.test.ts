@@ -4,7 +4,7 @@ import type { SemanticBackendCapabilities, SemanticRankResponse, Track } from ".
 import type { SemanticExperimentRunV1 } from "./types";
 import { createTextRankingRun, fingerprintTrackIds, MAX_RECENT_SEMANTIC_RUNS, rememberSemanticRun } from "./runs";
 
-const backend: SemanticBackendCapabilities = { id: "local-clap", display_name: "Local CLAP", model: "clap-v1", available: true, requires_local_audio: true, max_tracks: 20, max_labels: 20, capabilities: ["text_similarity"] };
+const backend: SemanticBackendCapabilities = { id: "local-clap", display_name: "Local CLAP", model: "clap-v1", available: true, requires_local_audio: true, max_tracks: 20, max_labels: 20, max_embedding_batch: 20, capabilities: ["text_similarity"] };
 const track = (id: string): Track => ({ id, name: `Track ${id}`, artist: "Lab Artist", album: "Lab Album", duration_ms: 120000, explicit: false, genres: [] });
 
 describe("semantic experiment runs", () => {

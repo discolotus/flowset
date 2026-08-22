@@ -17,6 +17,10 @@ from playlist_optimizer.semantic import (
     get_semantic_backend,
     get_semantic_registry,
 )
+from playlist_optimizer.semantic_embedding_cache import (
+    EmbeddingInferenceCache,
+    get_semantic_embedding_cache,
+)
 
 
 class FakeSemanticBackend:
@@ -44,13 +48,19 @@ class MalformedBackend(FakeSemanticBackend):
 
 
 class FakeMuqBackend(FakeSemanticBackend):
+    def __init__(self):
+        self.embed_calls = 0
+        self.model = "muq-local-v1"
+        self.representation = "muq-test-mean-v1"
+
     def capabilities(self) -> SemanticBackendCapabilities:
         return SemanticBackendCapabilities(
             id="local-muq-mulan",
             display_name="Local MuQ-MuLan",
-            model="muq-local-v1",
+            model=self.model,
             available=True,
             capabilities=["text_similarity", "embedding_extraction"],
+            embedding_representation=self.representation,
         )
 
     def rank(self, audio_paths: list[Path], labels: list[str]) -> list[SemanticRankResult]:
@@ -60,7 +70,16 @@ class FakeMuqBackend(FakeSemanticBackend):
         ]
 
     def embed(self, audio_paths: list[Path]) -> list[list[float]]:
+        self.embed_calls += 1
         return [[1.0, float(index)] for index, _ in enumerate(audio_paths)]
+
+
+class PartiallyFailingMuqBackend(FakeMuqBackend):
+    def embed(self, audio_paths: list[Path]) -> list[list[float]]:
+        self.embed_calls += 1
+        if audio_paths[0].name == "broken.wav":
+            raise RuntimeError("could not decode /private/authorized/broken.wav")
+        return [[1.0, 0.0]]
 
 
 class FakeMertBackend(FakeSemanticBackend):
@@ -152,6 +171,7 @@ def test_mert_reference_similarity_is_deterministic_and_never_a_text_score(tmp_p
 
 def test_embedding_extraction_is_typed_model_bound_and_batch_bounded(tmp_path: Path) -> None:
     (tmp_path / "one.wav").write_bytes(b"one")
+    (tmp_path / "two.wav").write_bytes(b"two")
     app.dependency_overrides[get_semantic_registry] = lambda: FakeRegistry(FakeMuqBackend())
     from playlist_optimizer.config import Settings, get_settings
 
@@ -161,20 +181,122 @@ def test_embedding_extraction_is_typed_model_bound_and_batch_bounded(tmp_path: P
         semantic_max_embedding_dimension=4,
         _env_file=None,
     )
+    app.dependency_overrides[get_semantic_embedding_cache] = lambda: EmbeddingInferenceCache(2)
     try:
-        response = TestClient(app).post(
+        client = TestClient(app)
+        response = client.post(
             "/api/v1/semantic/embeddings",
             json={
                 "backend_id": "local-muq-mulan",
                 "audio_paths": {"one": "one.wav"},
             },
         )
+        oversized = client.post(
+            "/api/v1/semantic/embeddings",
+            json={
+                "backend_id": "local-muq-mulan",
+                "audio_paths": {"one": "one.wav", "two": "two.wav"},
+            },
+        )
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 200
+    assert oversized.status_code == 422
     assert response.json()["dimension"] == 2
     assert response.json()["backend"]["model"] == "muq-local-v1"
-    assert response.json()["embeddings"] == [{"track_id": "one", "values": [1.0, 0.0]}]
+    assert response.json()["representation"] == "muq-test-mean-v1"
+    assert response.json()["embeddings"] == [
+        {
+            "track_id": "one",
+            "status": "complete",
+            "values": [1.0, 0.0],
+            "cache_status": "miss",
+            "error": None,
+        }
+    ]
+    assert response.json()["cache"] == {
+        "hits": 0,
+        "misses": 1,
+        "deduplicated": 0,
+        "evictions": 0,
+        "entries": 1,
+        "capacity": 2,
+    }
+
+
+def test_embedding_cache_invalidates_for_file_model_and_representation_changes(
+    tmp_path: Path,
+) -> None:
+    audio = tmp_path / "one.wav"
+    audio.write_bytes(b"one")
+    backend = FakeMuqBackend()
+    cache = EmbeddingInferenceCache(8)
+    app.dependency_overrides[get_semantic_registry] = lambda: FakeRegistry(backend)
+    app.dependency_overrides[get_semantic_embedding_cache] = lambda: cache
+    from playlist_optimizer.config import Settings, get_settings
+
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        essentia_audio_root=tmp_path,
+        semantic_max_embeddings=1,
+        semantic_max_embedding_dimension=4,
+        _env_file=None,
+    )
+    client = TestClient(app)
+    payload = {"backend_id": "local-muq-mulan", "audio_paths": {"one": "one.wav"}}
+    try:
+        first = client.post("/api/v1/semantic/embeddings", json=payload)
+        second = client.post("/api/v1/semantic/embeddings", json=payload)
+        audio.write_bytes(b"changed")
+        changed_file = client.post("/api/v1/semantic/embeddings", json=payload)
+        backend.model = "muq-local-v2"
+        changed_model = client.post("/api/v1/semantic/embeddings", json=payload)
+        backend.representation = "muq-test-layer-6-v1"
+        changed_representation = client.post("/api/v1/semantic/embeddings", json=payload)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert [
+        response.json()["embeddings"][0]["cache_status"]
+        for response in [first, second, changed_file, changed_model, changed_representation]
+    ] == ["miss", "hit", "miss", "miss", "miss"]
+    assert backend.embed_calls == 4
+
+
+def test_embedding_partial_failures_and_cache_bounds_remain_visible(tmp_path: Path) -> None:
+    (tmp_path / "one.wav").write_bytes(b"one")
+    (tmp_path / "broken.wav").write_bytes(b"broken")
+    backend = PartiallyFailingMuqBackend()
+    cache = EmbeddingInferenceCache(1)
+    app.dependency_overrides[get_semantic_registry] = lambda: FakeRegistry(backend)
+    app.dependency_overrides[get_semantic_embedding_cache] = lambda: cache
+    from playlist_optimizer.config import Settings, get_settings
+
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        essentia_audio_root=tmp_path,
+        semantic_max_embeddings=2,
+        semantic_max_embedding_dimension=4,
+        _env_file=None,
+    )
+    try:
+        response = TestClient(app).post(
+            "/api/v1/semantic/embeddings",
+            json={
+                "backend_id": "local-muq-mulan",
+                "audio_paths": {"one": "one.wav", "broken": "broken.wav"},
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["status"] for item in body["embeddings"]] == ["complete", "failed"]
+    assert body["embeddings"][1]["values"] == []
+    assert body["embeddings"][1]["cache_status"] is None
+    assert "/private/" not in body["embeddings"][1]["error"]
+    assert body["failed_track_ids"] == ["broken"]
+    assert body["cache"]["entries"] == 1
+    assert body["cache"]["capacity"] == 1
 
 
 def test_semantic_rank_returns_provenance_bound_scores_and_missing_results(tmp_path: Path) -> None:

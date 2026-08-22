@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     semantic_audio_root: Path | None = None
     semantic_max_embeddings: int = Field(default=20, ge=1, le=20)
     semantic_max_embedding_dimension: int = Field(default=4096, ge=1, le=8192)
+    semantic_embedding_cache_entries: int = Field(default=128, ge=1, le=2000)
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../../.env"),
