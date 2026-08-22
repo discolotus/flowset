@@ -60,7 +60,14 @@ class _SourceOutput:
     split_assignments: list[SplitFactorAssignment]
 
 
-def _parameter_value(track: Track, parameter: NumericParameter) -> float | None:
+def _parameter_value(
+    track: Track, parameter: NumericParameter, semantic_score_key: str | None = None
+) -> float | None:
+    if semantic_score_key is not None:
+        match = next(
+            (score for score in track.semantic_scores if score.key == semantic_score_key), None
+        )
+        return match.score if match is not None else None
     if parameter == "duration":
         return float(track.duration_ms)
     if parameter == "release_year":
@@ -84,12 +91,15 @@ def _level_name(index: int, count: int) -> str:
 
 
 def _partition_tracks(
-    tracks: list[Track], parameter: NumericParameter, bin_count: int
+    tracks: list[Track],
+    parameter: NumericParameter,
+    bin_count: int,
+    semantic_score_key: str | None = None,
 ) -> tuple[list[_TrackBin], list[Track], float | None, float | None]:
     valued: list[tuple[Track, float]] = []
     unavailable: list[Track] = []
     for track in tracks:
-        value = _parameter_value(track, parameter)
+        value = _parameter_value(track, parameter, semantic_score_key)
         if value is None:
             unavailable.append(track)
         else:
@@ -107,7 +117,7 @@ def _partition_tracks(
         index = 0 if width == 0 else min(int((value - minimum) / width), bin_count - 1)
         grouped_tracks[index].append(track)
 
-    display_name = _DISPLAY_NAMES[parameter]
+    display_name = "Semantic score" if semantic_score_key else _DISPLAY_NAMES[parameter]
     bins: list[_TrackBin] = []
     for index, bin_tracks in enumerate(grouped_tracks):
         lower = minimum if width == 0 else minimum + width * index
@@ -128,11 +138,16 @@ def _partition_tracks(
 
 
 def _distribution(
-    tracks: list[Track], parameter: NumericParameter, bin_count: int
+    tracks: list[Track],
+    parameter: NumericParameter,
+    bin_count: int,
+    semantic_score_key: str | None = None,
 ) -> ParameterDistribution:
-    bins, unavailable, minimum, maximum = _partition_tracks(tracks, parameter, bin_count)
+    bins, unavailable, minimum, maximum = _partition_tracks(
+        tracks, parameter, bin_count, semantic_score_key
+    )
     return _distribution_from_partition(
-        tracks, parameter, bin_count, bins, unavailable, minimum, maximum
+        tracks, parameter, bin_count, bins, unavailable, minimum, maximum, semantic_score_key
     )
 
 
@@ -144,6 +159,7 @@ def _distribution_from_partition(
     unavailable: list[Track],
     minimum: float | None,
     maximum: float | None,
+    semantic_score_key: str | None = None,
 ) -> ParameterDistribution:
     available_count = len(tracks) - len(unavailable)
     response_bins = [
@@ -161,6 +177,7 @@ def _distribution_from_partition(
     ]
     return ParameterDistribution(
         parameter=parameter,
+        semantic_score_key=semantic_score_key,
         requested_bin_count=bin_count,
         minimum=minimum,
         maximum=maximum,
@@ -204,7 +221,7 @@ def _split_source_outputs(
 
     for factor in split_factors:
         bins, unavailable, minimum, maximum = _partition_tracks(
-            tracks, factor.parameter, factor.bin_count
+            tracks, factor.parameter, factor.bin_count, factor.semantic_score_key
         )
         factor_bins.append(bins)
         track_bin_indices.append({track.id: item.index for item in bins for track in item.tracks})
@@ -218,6 +235,7 @@ def _split_source_outputs(
                 unavailable,
                 minimum,
                 maximum,
+                factor.semantic_score_key,
             )
         )
 
@@ -240,6 +258,7 @@ def _split_source_outputs(
                 bin_index=bin_index,
                 label=factor_bins[factor_index][bin_index].label,
                 range=factor_bins[factor_index][bin_index].value_range,
+                semantic_score_key=factor.semantic_score_key,
             )
             for factor_index, (factor, bin_index) in enumerate(
                 zip(split_factors, coordinate, strict=True)
@@ -279,7 +298,11 @@ def _split_source_outputs(
     )
 
 
-def _sort_value(track: Track, parameter: SortParameter) -> object | None:
+def _sort_value(
+    track: Track, parameter: SortParameter, semantic_score_key: str | None = None
+) -> object | None:
+    if semantic_score_key is not None:
+        return _parameter_value(track, "energy", semantic_score_key)
     if parameter == "key":
         value = camelot_key(track)
         return None if value[0] == 99 else value
@@ -291,12 +314,15 @@ def _sort_value(track: Track, parameter: SortParameter) -> object | None:
 
 
 def _sort_tracks(
-    tracks: list[Track], parameter: SortParameter, direction: SortDirection
+    tracks: list[Track],
+    parameter: SortParameter,
+    direction: SortDirection,
+    semantic_score_key: str | None = None,
 ) -> list[Track]:
     available: list[tuple[Track, object]] = []
     unavailable: list[Track] = []
     for track in tracks:
-        value = _sort_value(track, parameter)
+        value = _sort_value(track, parameter, semantic_score_key)
         if value is None:
             unavailable.append(track)
         else:
@@ -327,10 +353,22 @@ def _apply_subgroups(
     if request.subgroup is None:
         if request.sort is None:
             return tracks, [], 0
-        return _sort_tracks(tracks, request.sort.parameter, request.sort.direction), [], 0
+        return (
+            _sort_tracks(
+                tracks,
+                request.sort.parameter,
+                request.sort.direction,
+                request.sort.semantic_score_key,
+            ),
+            [],
+            0,
+        )
 
     bins, unavailable, _, _ = _partition_tracks(
-        tracks, request.subgroup.parameter, request.subgroup.bin_count
+        tracks,
+        request.subgroup.parameter,
+        request.subgroup.bin_count,
+        request.subgroup.semantic_score_key,
     )
     grouped: list[tuple[str, int | None, ValueRange | None, list[Track]]] = [
         (item.label, item.index, item.value_range, item.tracks) for item in bins if item.tracks
@@ -345,7 +383,10 @@ def _apply_subgroups(
     for group_number, (label, bin_index, value_range, group_tracks) in enumerate(grouped, start=1):
         if request.sort is not None:
             group_tracks = _sort_tracks(
-                group_tracks, request.sort.parameter, request.sort.direction
+                group_tracks,
+                request.sort.parameter,
+                request.sort.direction,
+                request.sort.semantic_score_key,
             )
         start_index = len(ordered_tracks)
         ordered_tracks.extend(group_tracks)
@@ -361,6 +402,7 @@ def _apply_subgroups(
                 end_index_exclusive=len(ordered_tracks),
                 track_count=len(group_tracks),
                 tracks=group_tracks,
+                semantic_score_key=request.subgroup.semantic_score_key,
             )
         )
     return ordered_tracks, groups, len(unavailable)
@@ -375,7 +417,10 @@ def preview_recipe(request: RecipePreviewRequest) -> RecipePreviewResponse:
         )
 
     distribution = _distribution(
-        tracks, request.distribution_parameter, request.distribution_bin_count
+        tracks,
+        request.distribution_parameter,
+        request.distribution_bin_count,
+        request.distribution_semantic_score_key,
     )
     if distribution.unavailable_track_count:
         warnings.append(

@@ -3,6 +3,25 @@
 Flowset's original source code is licensed under the MIT License. The packaged macOS
 preview also contains third-party components whose licenses continue to apply.
 
+## Optional local CLAP semantic ranking
+
+Flowset does not bundle CLAP software or model weights. CLAP checkpoint licensing varies. Operators must review the selected package version and checkpoint license before use.
+
+- LAION-AI CLAP source: <https://github.com/LAION-AI/CLAP>
+
+## Optional local MuQ-MuLan and MERT experiments
+
+Flowset bundles neither MuQ-MuLan nor MERT software, runtime dependencies, or model weights.
+Their published weights are licensed CC-BY-NC-4.0. Operators must provide local checkpoints and
+review all applicable code, dataset, and checkpoint terms. MERT is exposed only for music
+embeddings and reference-track similarity, not text-language scoring; its trusted local checkpoint
+code may execute when loaded.
+
+- MuQ official source: <https://github.com/tencent-ailab/MuQ>
+- MuQ-MuLan model card: <https://huggingface.co/OpenMuQ/MuQ-MuLan-large>
+- MERT official source: <https://github.com/yizhilll/MERT>
+- MERT model card: <https://huggingface.co/m-a-p/MERT-v1-330M>
+
 ## Essentia and model files
 
 The frozen API sidecar includes `essentia-tensorflow` 2.1 beta 6 dev 1389. Essentia is distributed

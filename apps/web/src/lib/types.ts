@@ -73,6 +73,29 @@ export interface Track {
   genres: string[];
   audio_features?: AudioFeatures | null;
   audio_feature_provenance?: AudioFeatureProvenance | null;
+  semantic_scores?: SemanticScore[];
+}
+
+export interface SemanticScoreProvenance { backend: string; model: string }
+export interface SemanticScore {
+  key: string;
+  label: string;
+  normalized_label: string;
+  score: number;
+  provenance: SemanticScoreProvenance;
+}
+export interface SemanticBackendCapabilities {
+  id: string; display_name: string; model: string; available: boolean;
+  detail?: string | null; requires_local_audio: boolean; max_tracks: number; max_labels: number;
+  capabilities: Array<"text_similarity" | "reference_similarity" | "embedding_extraction">;
+  license_note?: string | null;
+  embedding_dimension?: number | null;
+}
+export interface SemanticRankResponse {
+  backend: SemanticBackendCapabilities;
+  score_key: string;
+  results: Array<{ track_id: string; status: "complete" | "unavailable" | "failed"; scores: SemanticScore[]; error?: string | null }>;
+  missing_track_ids: string[];
 }
 
 export interface AudioFeatureResolutionResponse {
@@ -376,6 +399,7 @@ export interface ParameterDistribution {
   maximum: number | null;
   bins: DistributionBin[];
   unavailable_track_count: number;
+  semantic_score_key?: string | null;
 }
 
 export interface TrackGroup {

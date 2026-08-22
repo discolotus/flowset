@@ -19,6 +19,8 @@ import type {
   SpotifyPlaylistCreateRequest,
   SpotifyPlaylistCreateResponse,
   Track,
+  SemanticBackendCapabilities,
+  SemanticRankResponse,
 } from "./types";
 import type { SplitFactor } from "./factorGrid";
 
@@ -176,6 +178,33 @@ export function localAudioPreviewUrl(path: string): string {
   return `${API_BASE_URL}/api/v1/local-library/audio?${query}`;
 }
 
+export function getSemanticCapabilities(): Promise<SemanticBackendCapabilities[]> {
+  return request<SemanticBackendCapabilities[]>("/api/v1/semantic/backends");
+}
+
+export function rankSemanticAudio(input: {
+  backendId: string;
+  label: string;
+  audioPaths: Record<string, string>;
+}): Promise<SemanticRankResponse> {
+  return request<SemanticRankResponse>("/api/v1/semantic/rank", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ backend_id: input.backendId, labels: [input.label], audio_paths: input.audioPaths }),
+  });
+}
+
+export function rankSemanticReference(input: {
+  backendId: string;
+  referenceTrackId: string;
+  audioPaths: Record<string, string>;
+}): Promise<SemanticRankResponse> {
+  return request<SemanticRankResponse>("/api/v1/semantic/reference-rank", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ backend_id: input.backendId, reference_track_id: input.referenceTrackId, audio_paths: input.audioPaths }),
+  });
+}
+
 export function getSpotifyStatus(): Promise<SpotifyConnectionStatus> {
   return request<SpotifyConnectionStatus>("/api/v1/spotify/status");
 }
@@ -243,6 +272,7 @@ export function previewRecipe(input: {
   splitFactors: ReadonlyArray<Pick<SplitFactor, "parameter" | "binCount">>;
   subgroup: { parameter: NumericParameter; binCount: number } | null;
   sort: { parameter: SortParameter; direction: SortDirection } | null;
+  semanticScoreKeys?: { distribution?: string | null; split?: string | null; subgroup?: string | null; sort?: string | null };
 }): Promise<RecipePreviewResponse> {
   return request<RecipePreviewResponse>("/api/v1/recipes/preview", {
     method: "POST",
@@ -256,17 +286,20 @@ export function previewRecipe(input: {
       })),
       distribution_parameter: input.distributionParameter,
       distribution_bin_count: input.distributionBinCount,
+      ...(input.semanticScoreKeys?.distribution ? { distribution_semantic_score_key: input.semanticScoreKeys.distribution } : {}),
       split_factors: input.splitFactors.map((factor) => ({
         parameter: factor.parameter,
         bin_count: factor.binCount,
+        ...(input.semanticScoreKeys?.split ? { semantic_score_key: input.semanticScoreKeys.split } : {}),
       })),
       subgroup: input.subgroup
-        ? { parameter: input.subgroup.parameter, bin_count: input.subgroup.binCount }
+        ? { parameter: input.subgroup.parameter, bin_count: input.subgroup.binCount, ...(input.semanticScoreKeys?.subgroup ? { semantic_score_key: input.semanticScoreKeys.subgroup } : {}) }
         : null,
       sort: input.sort
         ? {
             parameter: input.sort.parameter,
             direction: input.sort.direction === "ascending" ? "asc" : "desc",
+            ...(input.semanticScoreKeys?.sort ? { semantic_score_key: input.semanticScoreKeys.sort } : {}),
           }
         : null,
     }),

@@ -16,6 +16,9 @@ dependencies = [
 essentia = [
   "essentia-tensorflow==2.1b6.dev1389",
 ]
+clap = ["laion-clap"]
+muq-mulan = ["muq", "torch", "torchaudio"]
+mert = ["librosa", "torch", "transformers"]
 
 [dependency-groups]
 dev = [

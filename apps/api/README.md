@@ -5,6 +5,21 @@ playlist strategies. Run it from the repository root with `npm run dev:api`.
 
 Interactive API documentation is available at <http://127.0.0.1:8000/docs>.
 
+## Optional semantic runtimes
+
+Install only the local backend you intend to operate: `make setup-clap`, `make setup-muq-mulan`,
+or `make setup-mert`. The extras leave direct runtime requirements broadly constrained while
+`uv.lock` records the exact versions currently resolved for reproducible installs; checkpoint
+compatibility must still be verified in the Python 3.12 environment. CLAP expects `laion-clap`;
+MuQ-MuLan expects `muq`, PyTorch, and torchaudio; MERT expects librosa, PyTorch, and Transformers.
+Model weights are never installed or downloaded by these commands, and desktop/default installs do
+not include these heavy experimental extras.
+CLAP also requires the `roberta-base` tokenizer to already exist in the local Hugging Face cache;
+Flowset forces Hub/Transformers offline mode before loading CLAP or MuQ-MuLan and fails clearly when
+a required nested artifact is missing.
+MERT loads only an explicit local checkpoint, but its official model format requires
+`trust_remote_code=True`; Python code stored in that trusted checkpoint directory may execute.
+
 ## Audio-feature providers
 
 `GET /api/v1/audio-features/providers` reports the available providers and their setup

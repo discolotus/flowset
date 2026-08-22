@@ -18,16 +18,21 @@ interface DistributionChartProps {
 }
 
 export function DistributionChart({ distribution, splitBinCount }: DistributionChartProps) {
+  const semantic = Boolean(distribution.semantic_score_key);
+  const displayLabel = semantic ? "Semantic score" : parameterLabel(distribution.parameter);
+  const formatValue = (value: number | null) => semantic
+    ? (value == null ? "—" : value.toFixed(3))
+    : formatParameterValue(value, distribution.parameter);
   const chartData = distribution.bins.map((bin) => ({
     ...bin,
     shortLabel: bin.range
-      ? formatParameterValue(bin.range.minimum, distribution.parameter)
+      ? formatValue(bin.range.minimum)
       : "N/A",
   }));
 
   return (
     <div>
-      <div className="h-56 sm:h-64" aria-label={`${parameterLabel(distribution.parameter)} distribution`}>
+      <div className="h-56 sm:h-64" aria-label={`${displayLabel} distribution`}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 20, right: 4, bottom: 2, left: -30 }}>
             <CartesianGrid stroke="#29302d" strokeDasharray="2 7" vertical={false} />
@@ -70,8 +75,7 @@ export function DistributionChart({ distribution, splitBinCount }: DistributionC
       </div>
       <div className="mt-3 flex items-center justify-between border-t border-line/80 pt-3 text-xs text-mist/60">
         <span>
-          observed {formatParameterValue(distribution.minimum, distribution.parameter)} to{" "}
-          {formatParameterValue(distribution.maximum, distribution.parameter)}
+          observed {formatValue(distribution.minimum)} to{" "}{formatValue(distribution.maximum)}
         </span>
         <span className="font-mono tabular-nums text-white/75">
           {distribution.unavailable_track_count
@@ -83,10 +87,10 @@ export function DistributionChart({ distribution, splitBinCount }: DistributionC
   );
 }
 
-export function DistributionLegend({ parameter }: { parameter: NumericParameter }) {
+export function DistributionLegend({ parameter, semanticScoreKey }: { parameter: NumericParameter; semanticScoreKey?: string | null }) {
   return (
     <span className="text-xs text-mist/55">
-      Equal-width bins across observed {parameterLabel(parameter).toLowerCase()}
+      Equal-width bins across observed {semanticScoreKey ? "semantic scores" : parameterLabel(parameter).toLowerCase()}
     </span>
   );
 }

@@ -35,6 +35,8 @@ AnalysisProgressPhase = Literal[
 ]
 AnalysisTrackStatus = Literal["pending", "running", "complete", "error", "unavailable"]
 AnalysisStageState = Literal["pending", "active", "complete", "skipped", "error"]
+SemanticResultStatus = Literal["complete", "unavailable", "failed"]
+SemanticCapability = Literal["text_similarity", "reference_similarity", "embedding_extraction"]
 
 NumericParameter = Literal[
     "energy",
@@ -139,6 +141,19 @@ class AudioFeatureProvenance(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class SemanticScoreProvenance(BaseModel):
+    backend: str
+    model: str
+
+
+class SemanticScore(BaseModel):
+    key: str
+    label: str
+    normalized_label: str
+    score: float
+    provenance: SemanticScoreProvenance
+
+
 class Track(BaseModel):
     id: str
     uri: str | None = None
@@ -154,6 +169,7 @@ class Track(BaseModel):
     genres: list[str] = Field(default_factory=list)
     audio_features: AudioFeatures | None = None
     audio_feature_provenance: AudioFeatureProvenance | None = None
+    semantic_scores: list[SemanticScore] = Field(default_factory=list)
 
 
 class Constraints(BaseModel):
@@ -266,11 +282,13 @@ class LocalLibraryBrowseResponse(BaseModel):
 class BinSpec(BaseModel):
     parameter: NumericParameter
     bin_count: int = Field(default=5, ge=2, le=12)
+    semantic_score_key: str | None = Field(default=None, min_length=1, max_length=300)
 
 
 class SortSpec(BaseModel):
     parameter: SortParameter
     direction: SortDirection = "asc"
+    semantic_score_key: str | None = Field(default=None, min_length=1, max_length=300)
 
 
 class RecipePreviewRequest(BaseModel):
@@ -278,6 +296,7 @@ class RecipePreviewRequest(BaseModel):
     input_playlists: list[InputPlaylist] = Field(min_length=1, max_length=50)
     distribution_parameter: NumericParameter = "energy"
     distribution_bin_count: int = Field(default=5, ge=2, le=12)
+    distribution_semantic_score_key: str | None = Field(default=None, min_length=1, max_length=300)
     split: BinSpec | None = None
     split_factors: list[BinSpec] = Field(default_factory=list, max_length=3)
     subgroup: BinSpec | None = None
@@ -320,6 +339,7 @@ class DistributionBin(BaseModel):
 
 class ParameterDistribution(BaseModel):
     parameter: NumericParameter
+    semantic_score_key: str | None = None
     requested_bin_count: int
     minimum: float | None
     maximum: float | None
@@ -335,6 +355,7 @@ class SplitFactorAssignment(BaseModel):
     label: str
     range: ValueRange
     unavailable: bool = False
+    semantic_score_key: str | None = None
 
 
 class PlaylistGroup(BaseModel):
@@ -348,6 +369,7 @@ class PlaylistGroup(BaseModel):
     end_index_exclusive: int
     track_count: int
     tracks: list[Track]
+    semantic_score_key: str | None = None
 
 
 class RecipeOutputPlaylist(BaseModel):
@@ -442,6 +464,79 @@ class AudioFeatureResolutionResponse(BaseModel):
     analyzed_track_count: int
     unavailable_track_ids: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+
+
+class SemanticRankRequest(BaseModel):
+    backend_id: str = "local-clap"
+    labels: list[str] = Field(min_length=1, max_length=50)
+    audio_paths: dict[str, str] = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_labels(self) -> "SemanticRankRequest":
+        normalized = [" ".join(label.split()).casefold() for label in self.labels]
+        if any(not label or len(label) > 100 for label in normalized):
+            raise ValueError("Semantic labels must contain 1 to 100 characters")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("Semantic labels must be unique after normalization")
+        return self
+
+
+class SemanticBackendCapabilities(BaseModel):
+    id: str
+    display_name: str
+    model: str
+    available: bool
+    detail: str | None = None
+    requires_local_audio: bool = True
+    max_tracks: int = Field(default=100, ge=1, le=500)
+    max_labels: int = Field(default=20, ge=1, le=50)
+    capabilities: list[SemanticCapability] = Field(default_factory=lambda: ["text_similarity"])
+    license_note: str | None = None
+    embedding_dimension: int | None = Field(default=None, ge=1, le=65536)
+
+
+class SemanticRankedScore(BaseModel):
+    key: str
+    label: str
+    normalized_label: str
+    score: float
+    provenance: SemanticScoreProvenance
+
+
+class SemanticTrackResult(BaseModel):
+    track_id: str
+    status: SemanticResultStatus
+    scores: list[SemanticRankedScore] = Field(default_factory=list)
+    error: str | None = None
+
+
+class SemanticRankResponse(BaseModel):
+    backend: SemanticBackendCapabilities
+    score_key: str
+    results: list[SemanticTrackResult]
+    missing_track_ids: list[str] = Field(default_factory=list)
+
+
+class SemanticReferenceRankRequest(BaseModel):
+    backend_id: str
+    reference_track_id: str = Field(min_length=1, max_length=200)
+    audio_paths: dict[str, str] = Field(min_length=1, max_length=100)
+
+
+class SemanticEmbeddingRequest(BaseModel):
+    backend_id: str
+    audio_paths: dict[str, str] = Field(min_length=1, max_length=20)
+
+
+class SemanticEmbedding(BaseModel):
+    track_id: str
+    values: list[float] = Field(max_length=8192)
+
+
+class SemanticEmbeddingResponse(BaseModel):
+    backend: SemanticBackendCapabilities
+    dimension: int = Field(ge=1, le=8192)
+    embeddings: list[SemanticEmbedding] = Field(max_length=20)
 
 
 class AnalysisProgressStageSnapshot(BaseModel):
