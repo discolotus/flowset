@@ -320,6 +320,7 @@ def test_muq_missing_nested_local_artifact_fails_without_download(
             raise OSError("OpenMuQ/MuQ-large-msd-iter is not cached")
 
     monkeypatch.setitem(sys.modules, "muq", SimpleNamespace(MuQMuLan=FakeMuQMuLan))
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace())
     with pytest.raises(RuntimeError, match="absent or invalid"):
         _ = LocalMuqMulanBackend(checkpoint)._model
 
