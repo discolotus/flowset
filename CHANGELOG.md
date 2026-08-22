@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.0-preview.7] - 2026-08-21
+
+- Add a dedicated Semantic Lab workspace while preserving Playlist Builder state across navigation.
+- Run bounded, authorized semantic experiments with immutable session history, sortable results,
+  backend provenance, visible partial failures, and explicit promotion into recipe scopes.
+
 ## [0.2.0-preview.6] - 2026-08-21
 
 - Add local CLAP and MuQ-MuLan text-to-music ranking with independently selectable recipe scopes.
