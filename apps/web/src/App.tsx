@@ -25,6 +25,8 @@ import { RowDensityToggle } from "./components/RowDensityToggle";
 import { SplitFactorGrid } from "./components/SplitFactorGrid";
 import { SourcePlaylistPicker } from "./components/SourcePlaylistPicker";
 import { ExportDialog } from "./components/ExportDialog";
+import { SemanticLab } from "./pages/SemanticLab";
+import { fingerprintTrackIds } from "./lib/semantic/runs";
 import {
   browseLocalLibrary,
   discoverLocalPlaylists,
@@ -121,6 +123,7 @@ import type {
   SemanticScore,
   Track,
 } from "./lib/types";
+import type { SemanticExperimentRunV1, SemanticPromotion } from "./lib/semantic/types";
 
 export function mergeSemanticScores(existing: SemanticScore[] = [], incoming: SemanticScore[] = []): SemanticScore[] {
   const merged = new Map(existing.map((score) => [score.key, score]));
@@ -345,6 +348,9 @@ export default function App() {
     }
   })();
   const [sourceMode, setSourceMode] = useState<"local" | "demo">("local");
+  const [workspaceMode, setWorkspaceMode] = useState<"builder" | "semantic-lab">("builder");
+  // Deliberately session-only until workspace-state v2 can migrate native and browser storage together.
+  const [semanticRuns, setSemanticRuns] = useState<readonly SemanticExperimentRunV1[]>([]);
   const [demoPlaylists, setDemoPlaylists] = useState<InputPlaylist[]>([]);
   const [localPlaylists, setLocalPlaylists] = useState<InputPlaylist[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -538,6 +544,30 @@ export default function App() {
   const selectedAudioPaths = useMemo(() => Object.fromEntries(
     uniqueTracks.flatMap((track) => localAudioPaths[track.id] ? [[track.id, localAudioPaths[track.id]]] : []),
   ), [localAudioPaths, uniqueTracks]);
+
+  const promoteSemanticRun = (
+    promotion: SemanticPromotion,
+    scoresByTrack: ReadonlyMap<string, Track["semantic_scores"]>,
+  ): boolean => {
+    const run = semanticRuns.find(({ id }) => id === promotion.runId);
+    const hasPromotableScores = [...scoresByTrack.values()].some((scores) =>
+      scores?.some(({ key }) => key === promotion.scoreKey),
+    );
+    if (!run || !hasPromotableScores || run.sourceTrackSetFingerprint !== fingerprintTrackIds(uniqueTracks.map(({ id }) => id))) {
+      return false;
+    }
+    setLocalPlaylists((current) => current.map((playlist) => ({
+      ...playlist,
+      tracks: playlist.tracks.map((track) => scoresByTrack.has(track.id)
+        ? { ...track, semantic_scores: mergeSemanticScores(track.semantic_scores, scoresByTrack.get(track.id) ?? []) }
+        : track),
+    })));
+    setSemanticScoreKeys((current) => Object.fromEntries(Object.entries(current).map(([scope, key]) => [
+      scope,
+      promotion.scopes[scope as keyof SemanticScopes] ? promotion.scoreKey : key,
+    ])) as Record<keyof SemanticScopes, string | null>);
+    return true;
+  };
   const numericParameterCoverage = useMemo(
     () => new Map<NumericParameter, ParameterCoverage>(
       NUMERIC_PARAMETERS.map(({ value }) => [value, parameterCoverage(uniqueTracks, value)]),
@@ -1399,6 +1429,10 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <div role="group" aria-label="Workspace" className="source-mode-tabs">
+              <button type="button" className={workspaceMode === "builder" ? "active" : ""} aria-pressed={workspaceMode === "builder"} onClick={() => setWorkspaceMode("builder")}>Playlist Builder</button>
+              <button type="button" className={workspaceMode === "semantic-lab" ? "active" : ""} aria-pressed={workspaceMode === "semantic-lab"} onClick={() => setWorkspaceMode("semantic-lab")}>Semantic Lab</button>
+            </div>
             <span className="hidden text-[10px] uppercase tracking-[0.16em] text-acid/65 sm:block">
               {sourceMode === "local" ? "Local library workspace" : "Fixture workspace"}
             </span>
@@ -1407,6 +1441,15 @@ export default function App() {
       </header>
 
       <main id="workspace" className="mx-auto max-w-[1480px] px-5 pb-16 pt-9 lg:px-8 lg:pt-12">
+        {workspaceMode === "semantic-lab" ? (
+          <SemanticLab
+            tracks={uniqueTracks}
+            audioPaths={selectedAudioPaths}
+            runs={semanticRuns}
+            onRunsChange={setSemanticRuns}
+            onPromote={promoteSemanticRun}
+          />
+        ) : <>
         <section className="max-w-4xl">
           <p className="eyebrow">Organization recipe 01</p>
           <h1 className="mt-3 max-w-3xl text-balance font-display text-4xl font-semibold leading-[1.02] tracking-[-0.045em] text-white sm:text-5xl lg:text-6xl">
@@ -1821,6 +1864,7 @@ export default function App() {
             </div>
           </div>
         )}
+        </>}
       </main>
 
       <ExportDialog open={exportDialogOpen} onClose={() => setExportDialogOpen(false)}>

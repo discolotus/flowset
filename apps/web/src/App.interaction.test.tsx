@@ -187,6 +187,42 @@ beforeEach(() => {
         detail: "Fixture provider boundary",
       }] });
     }
+    if (path.includes("/api/v1/semantic/backends")) return jsonResponse([{
+      id: "local-clap",
+      display_name: "Local CLAP",
+      model: "clap-v1",
+      available: true,
+      requires_local_audio: true,
+      max_tracks: 20,
+      max_labels: 1,
+      capabilities: ["text_similarity"],
+      detail: "Runs on loopback over authorized paths.",
+    }]);
+    if (path.includes("/api/v1/semantic/rank")) return jsonResponse({
+      backend: {
+        id: "local-clap",
+        display_name: "Local CLAP",
+        model: "clap-v1",
+        available: true,
+        requires_local_audio: true,
+        max_tracks: 20,
+        max_labels: 1,
+        capabilities: ["text_similarity"],
+      },
+      score_key: "semantic:local-clap:clap-v1:focus",
+      results: [{
+        track_id: localTrack.id,
+        status: "complete",
+        scores: [{
+          key: "semantic:local-clap:clap-v1:focus",
+          label: "focus",
+          normalized_label: "focus",
+          score: 0.75,
+          provenance: { backend: "local-clap", model: "clap-v1" },
+        }],
+      }],
+      missing_track_ids: [],
+    });
     if (path.includes("/api/v1/demo/playlists")) return jsonResponse(demoPlaylists);
     if (path.includes("/api/v1/local-library/folders")) {
       return jsonResponse({
@@ -252,6 +288,21 @@ async function openFixtureWorkspace(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("App behavior", () => {
+  it("switches workspaces without unmounting Builder state", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openFixtureWorkspace(user);
+    expect(screen.getByLabelText("Combined source summary").textContent).toContain("2 sources");
+
+    await user.click(screen.getByRole("button", { name: "Semantic Lab" }));
+    expect(await screen.findByRole("heading", { name: "Explore locally. Promote deliberately." })).not.toBeNull();
+    expect(screen.getAllByText("Local CLAP").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "Playlist Builder" }));
+    expect(screen.getByLabelText("Combined source summary").textContent).toContain("2 sources");
+    expect(screen.getByText("Night Drive Levels — Fixture basis")).not.toBeNull();
+  });
+
   it("discovers, imports, selects, and readies a playlist-file source", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -280,6 +331,34 @@ describe("App behavior", () => {
     expect(summary.textContent).toContain("1 input tracks");
     const analyze = screen.getByRole("button", { name: "Analyze selected tracks" });
     expect(analyze).toHaveProperty("disabled", false);
+  });
+
+  it("keeps Lab inference isolated until explicit recipe promotion", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Playlist files" }));
+    await user.click(await screen.findByRole("button", { name: /Search.*Music/ }));
+    await user.click(await screen.findByRole("button", { name: "Add playlist" }));
+    await screen.findByLabelText("Combined source summary");
+    await waitFor(() => expect(previewRequests.length).toBeGreaterThan(0));
+
+    await user.click(screen.getByRole("button", { name: "Semantic Lab" }));
+    expect((await screen.findByLabelText(/Local Main Track/) as HTMLInputElement).checked).toBe(true);
+    await user.type(screen.getByLabelText("Lab text query"), "focus");
+    const previewsBeforeRun = previewRequests.length;
+    await user.click(screen.getByRole("button", { name: "Run experiment" }));
+    await screen.findByText(/Recipe unchanged/);
+    expect(previewRequests).toHaveLength(previewsBeforeRun);
+    expect(previewRequests.at(-1)).not.toHaveProperty("distribution_semantic_score_key");
+
+    await user.click(screen.getByRole("button", { name: "Promote score to recipe" }));
+    await waitFor(() => expect(previewRequests.at(-1)).toHaveProperty(
+      "distribution_semantic_score_key",
+      "semantic:local-clap:clap-v1:focus",
+    ));
+    const promotedTrack = (previewRequests.at(-1)?.input_playlists as Array<{ tracks: Track[] }>)[0].tracks[0];
+    expect(promotedTrack.semantic_scores?.[0].score).toBe(0.75);
   });
 
   it("runs the visible source, deduplication, split, subgroup, scoped-sort, and output flow", async () => {

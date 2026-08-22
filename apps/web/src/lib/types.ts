@@ -87,7 +87,7 @@ export interface SemanticScore {
 export interface SemanticBackendCapabilities {
   id: string; display_name: string; model: string; available: boolean;
   detail?: string | null; requires_local_audio: boolean; max_tracks: number; max_labels: number;
-  capabilities: Array<"text_similarity" | "reference_similarity" | "embedding_extraction">;
+  capabilities: ReadonlyArray<"text_similarity" | "reference_similarity" | "embedding_extraction">;
   license_note?: string | null;
   embedding_dimension?: number | null;
 }
