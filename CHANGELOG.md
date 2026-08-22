@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0-preview.10] - 2026-08-22
+
+- Add a searchable MERT reference-track explorer with readable metadata, authorized local preview,
+  nearest-neighbor inspection, and explicit promotion into recipe scopes.
+- Bind MERT similarity scores to the fixed model, layer, pooling, and whole-track representation
+  identity so future representation controls cannot silently mix incompatible results.
+
 ## [0.2.0-preview.9] - 2026-08-22
 
 - Add bounded, model- and representation-aware in-memory embedding reuse with visible per-track
