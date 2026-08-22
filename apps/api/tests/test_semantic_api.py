@@ -27,7 +27,10 @@ class FakeSemanticBackend:
 
     def rank(self, audio_paths: list[Path], labels: list[str]) -> list[SemanticRankResult]:
         return [
-            SemanticRankResult(relative_path=audio_paths[0].name, scores={labels[0]: 0.9}),
+            SemanticRankResult(
+                relative_path=audio_paths[0].name,
+                scores={label: 0.9 - index * 0.1 for index, label in enumerate(labels)},
+            ),
             SemanticRankResult(relative_path=audio_paths[1].name, scores={}),
         ]
 
@@ -187,7 +190,7 @@ def test_semantic_rank_returns_provenance_bound_scores_and_missing_results(tmp_p
         response = TestClient(app).post(
             "/api/v1/semantic/rank",
             json={
-                "labels": ["  Peak   Time  "],
+                "labels": ["  Peak   Time  ", "Warm   Glow"],
                 "audio_paths": {"track-1": "one.wav", "track-2": "two.wav"},
             },
         )
@@ -198,8 +201,14 @@ def test_semantic_rank_returns_provenance_bound_scores_and_missing_results(tmp_p
     body = response.json()
     assert body["backend"]["model"] == "fake/checkpoint-v1"
     assert body["score_key"] == "semantic:fake-clap:fake/checkpoint-v1:peak time"
+    assert body["score_keys_by_normalized_label"] == {
+        "peak time": "semantic:fake-clap:fake/checkpoint-v1:peak time",
+        "warm glow": "semantic:fake-clap:fake/checkpoint-v1:warm glow",
+    }
     assert body["results"][0]["scores"][0]["label"] == "Peak Time"
     assert body["results"][0]["scores"][0]["score"] == 0.9
+    assert body["results"][0]["scores"][1]["label"] == "Warm Glow"
+    assert body["results"][0]["scores"][1]["score"] == pytest.approx(0.8)
     assert body["results"][1]["status"] == "unavailable"
     assert body["missing_track_ids"] == ["track-2"]
 
@@ -287,6 +296,30 @@ def test_semantic_rank_rejects_non_finite_backend_scores_as_502(tmp_path: Path) 
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 502
+
+
+def test_semantic_rank_rejects_unrequested_or_duplicate_normalized_backend_labels(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "one.wav").write_bytes(b"one")
+    from playlist_optimizer.config import Settings, get_settings
+
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        essentia_audio_root=tmp_path, _env_file=None
+    )
+    try:
+        client = TestClient(app)
+        for scores in ({"not requested": 0.5}, {"Warm": 0.5, " warm ": 0.6}):
+            app.dependency_overrides[get_semantic_backend] = lambda scores=scores: MalformedBackend(
+                scores
+            )
+            response = client.post(
+                "/api/v1/semantic/rank",
+                json={"labels": ["warm"], "audio_paths": {"one": "one.wav"}},
+            )
+            assert response.status_code == 502
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_checkpoint_without_required_runtime_is_not_available(tmp_path: Path, monkeypatch) -> None:

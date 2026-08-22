@@ -13,6 +13,7 @@ import {
   localAudioPreviewUrl,
   matchSpotifyTracks,
   previewRecipe,
+  rankSemanticAudio,
   resolveAudioFeatures,
   startSpotifyAuthorization,
 } from "./api";
@@ -229,6 +230,27 @@ describe("audio feature provider API", () => {
     expect(localAudioPreviewUrl("Sets/June 26/A&B #1.opus")).toBe(
       "/api/v1/local-library/audio?path=Sets%2FJune+26%2FA%26B+%231.opus",
     );
+  });
+});
+
+describe("semantic ranking API", () => {
+  it("sends every prompt in one ordered multi-label request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await rankSemanticAudio({
+      backendId: "local-clap",
+      labels: ["hypnotic sunrise", "warm analog glow"],
+      audioPaths: { "track-one": "Sets/track-one.wav" },
+    });
+
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/semantic/rank");
+    expect(JSON.parse(String(options.body))).toEqual({
+      backend_id: "local-clap",
+      labels: ["hypnotic sunrise", "warm analog glow"],
+      audio_paths: { "track-one": "Sets/track-one.wav" },
+    });
   });
 });
 

@@ -169,6 +169,11 @@ def rank_semantic_audio(
     except (ValueError, FileNotFoundError, OSError) as exc:
         raise HTTPException(status_code=400, detail="Invalid authorized audio path") from exc
     labels = [" ".join(label.split()) for label in payload.labels]
+    requested_labels = {normalize_semantic_label(label): label for label in labels}
+    score_keys_by_normalized_label = {
+        normalized: semantic_score_key(capabilities.id, capabilities.model, label)
+        for normalized, label in requested_labels.items()
+    }
     try:
         ranked = backend.rank(paths, labels)
     except RuntimeError as exc:
@@ -183,6 +188,8 @@ def rank_semantic_audio(
             not isinstance(score, (int, float)) or not math.isfinite(score)
             for score in item.scores.values()
         )
+        or len({normalize_semantic_label(label) for label in item.scores}) != len(item.scores)
+        or any(normalize_semantic_label(label) not in requested_labels for label in item.scores)
         for item in ranked
     ):
         raise HTTPException(status_code=502, detail="Semantic backend returned malformed output")
@@ -203,7 +210,9 @@ def rank_semantic_audio(
                     score=score,
                     provenance=provenance,
                 )
-                for label, score in item.scores.items()
+                for returned_label, score in item.scores.items()
+                for normalized_label in [normalize_semantic_label(returned_label)]
+                for label in [requested_labels[normalized_label]]
             ]
         )
         if not scores:
@@ -219,6 +228,7 @@ def rank_semantic_audio(
     return SemanticRankResponse(
         backend=capabilities.model_dump(),
         score_key=semantic_score_key(capabilities.id, capabilities.model, labels[0]),
+        score_keys_by_normalized_label=score_keys_by_normalized_label,
         results=results,
         missing_track_ids=missing,
     )
@@ -281,7 +291,12 @@ def rank_semantic_reference(
         )
         for track_id, row in zip(payload.audio_paths, embeddings, strict=True)
     ]
-    return SemanticRankResponse(backend=capabilities, score_key=key, results=results)
+    return SemanticRankResponse(
+        backend=capabilities,
+        score_key=key,
+        score_keys_by_normalized_label={normalize_semantic_label(label): key},
+        results=results,
+    )
 
 
 @router.post("/semantic/embeddings", response_model=SemanticEmbeddingResponse)

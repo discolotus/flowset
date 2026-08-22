@@ -210,6 +210,7 @@ beforeEach(() => {
         capabilities: ["text_similarity"],
       },
       score_key: "semantic:local-clap:clap-v1:focus",
+      score_keys_by_normalized_label: { focus: "semantic:local-clap:clap-v1:focus" },
       results: [{
         track_id: localTrack.id,
         status: "complete",
@@ -345,14 +346,14 @@ describe("App behavior", () => {
 
     await user.click(screen.getByRole("button", { name: "Semantic Lab" }));
     expect((await screen.findByLabelText(/Local Main Track/) as HTMLInputElement).checked).toBe(true);
-    await user.type(screen.getByLabelText("Lab text query"), "focus");
+    await user.type(screen.getByLabelText("Prompt 1"), "focus");
     const previewsBeforeRun = previewRequests.length;
-    await user.click(screen.getByRole("button", { name: "Run experiment" }));
+    await user.click(screen.getByRole("button", { name: "Run prompt matrix" }));
     await screen.findByText(/Recipe unchanged/);
     expect(previewRequests).toHaveLength(previewsBeforeRun);
     expect(previewRequests.at(-1)).not.toHaveProperty("distribution_semantic_score_key");
 
-    await user.click(screen.getByRole("button", { name: "Promote score to recipe" }));
+    await user.click(screen.getByRole("button", { name: "Promote selected score to recipe" }));
     await waitFor(() => expect(previewRequests.at(-1)).toHaveProperty(
       "distribution_semantic_score_key",
       "semantic:local-clap:clap-v1:focus",

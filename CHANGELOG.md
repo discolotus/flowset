@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.0-preview.8] - 2026-08-22
+
+- Add a bounded multi-prompt composer and accessible track-by-prompt Semantic Lab score matrix.
+- Keep matrix exploration isolated from recipes and promote only the explicitly selected raw score.
+- Bind every returned semantic score to a requested normalized prompt, backend, and model revision.
+
 ## [0.2.0-preview.7] - 2026-08-21
 
 - Add a dedicated Semantic Lab workspace while preserving Playlist Builder state across navigation.

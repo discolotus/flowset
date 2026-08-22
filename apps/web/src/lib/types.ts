@@ -94,6 +94,7 @@ export interface SemanticBackendCapabilities {
 export interface SemanticRankResponse {
   backend: SemanticBackendCapabilities;
   score_key: string;
+  score_keys_by_normalized_label: Record<string, string>;
   results: Array<{ track_id: string; status: "complete" | "unavailable" | "failed"; scores: SemanticScore[]; error?: string | null }>;
   missing_track_ids: string[];
 }

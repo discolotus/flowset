@@ -184,13 +184,13 @@ export function getSemanticCapabilities(): Promise<SemanticBackendCapabilities[]
 
 export function rankSemanticAudio(input: {
   backendId: string;
-  label: string;
   audioPaths: Record<string, string>;
-}): Promise<SemanticRankResponse> {
+} & ({ labels: readonly string[]; label?: never } | { label: string; labels?: never })): Promise<SemanticRankResponse> {
+  const labels = "labels" in input ? input.labels : [input.label];
   return request<SemanticRankResponse>("/api/v1/semantic/rank", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ backend_id: input.backendId, labels: [input.label], audio_paths: input.audioPaths }),
+    body: JSON.stringify({ backend_id: input.backendId, labels, audio_paths: input.audioPaths }),
   });
 }
 
