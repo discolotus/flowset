@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.0-preview.6] - 2026-08-21
+
+- Add local CLAP and MuQ-MuLan text-to-music ranking with independently selectable recipe scopes.
+- Add bounded MuQ-MuLan and MERT embedding experiments, including MERT reference-track similarity.
+- Keep semantic analysis local, model-provenanced, explicitly configured, and offline-only.
+
 ## [0.2.0-preview.4] - 2026-08-06
 
 - Add recursive `.m3u` and `.m3u8` discovery beneath a user-selected parent folder and feed

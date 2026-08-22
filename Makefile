@@ -1,4 +1,4 @@
-.PHONY: setup setup-essentia setup-essentia-models dev test test-native test-api-runtime-smoke test-audio-export-smoke test-mp3-export-smoke lint build desktop-sidecar desktop-build release-preview
+.PHONY: setup setup-essentia setup-clap setup-muq-mulan setup-mert setup-essentia-models setup-clap-models setup-muq-mulan-models setup-mert-models setup-semantic-models dev test test-native test-api-runtime-smoke test-semantic-models-smoke test-audio-export-smoke test-mp3-export-smoke lint build desktop-sidecar desktop-build release-preview
 
 setup:
 	npm install
@@ -6,6 +6,33 @@ setup:
 
 setup-essentia:
 	cd apps/api && UV_CACHE_DIR=.uv-cache uv sync --extra essentia
+
+setup-clap:
+	cd apps/api && UV_CACHE_DIR=.uv-cache uv sync --extra clap
+
+setup-muq-mulan:
+	cd apps/api && UV_CACHE_DIR=.uv-cache uv sync --extra muq-mulan
+
+setup-mert:
+	cd apps/api && UV_CACHE_DIR=.uv-cache uv sync --extra mert
+
+setup-clap-models: setup-clap
+	cd apps/api && UV_CACHE_DIR=.uv-cache uv run python scripts/download_semantic_models.py clap
+
+setup-muq-mulan-models: setup-muq-mulan
+	@test "$(ACCEPT_RESTRICTED_WEIGHTS)" = "1" || (echo "MuQ-MuLan weights are CC-BY-NC-4.0; rerun with ACCEPT_RESTRICTED_WEIGHTS=1" >&2; exit 2)
+	cd apps/api && UV_CACHE_DIR=.uv-cache uv run python scripts/download_semantic_models.py muq-mulan --accept-restricted-weights
+
+setup-mert-models: setup-mert
+	@test "$(ACCEPT_RESTRICTED_WEIGHTS)" = "1" || (echo "MERT weights are CC-BY-NC-4.0; rerun with ACCEPT_RESTRICTED_WEIGHTS=1" >&2; exit 2)
+	@test "$(ACCEPT_TRUSTED_CODE)" = "1" || (echo "MERT executes pinned checkpoint code; rerun with ACCEPT_TRUSTED_CODE=1" >&2; exit 2)
+	cd apps/api && UV_CACHE_DIR=.uv-cache uv run python scripts/download_semantic_models.py mert --accept-restricted-weights --accept-trusted-code
+
+setup-semantic-models:
+	cd apps/api && UV_CACHE_DIR=.uv-cache uv sync --extra clap --extra muq-mulan --extra mert
+	@test "$(ACCEPT_RESTRICTED_WEIGHTS)" = "1" || (echo "MuQ-MuLan/MERT weights are CC-BY-NC-4.0; rerun with ACCEPT_RESTRICTED_WEIGHTS=1" >&2; exit 2)
+	@test "$(ACCEPT_TRUSTED_CODE)" = "1" || (echo "MERT executes pinned checkpoint code; rerun with ACCEPT_TRUSTED_CODE=1" >&2; exit 2)
+	cd apps/api && UV_CACHE_DIR=.uv-cache uv run python scripts/download_semantic_models.py all --accept-restricted-weights --accept-trusted-code
 
 setup-essentia-models:
 	cd apps/api && python3 scripts/download_essentia_models.py
@@ -24,6 +51,11 @@ test-native:
 
 test-api-runtime-smoke:
 	cd apps/api && UV_CACHE_DIR=.uv-cache uv run python ../../scripts/smoke_test_api_runtime.py
+
+test-semantic-models-smoke:
+	cd apps/api && UV_CACHE_DIR=.uv-cache uv run python scripts/smoke_test_semantic_models.py clap
+	cd apps/api && UV_CACHE_DIR=.uv-cache uv run python scripts/smoke_test_semantic_models.py muq-mulan
+	cd apps/api && UV_CACHE_DIR=.uv-cache uv run python scripts/smoke_test_semantic_models.py mert
 
 test-audio-export-smoke:
 	npm run build --workspace @playlist-optimizer/web

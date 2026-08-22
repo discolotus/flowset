@@ -7,6 +7,8 @@ from playlist_optimizer.models import (
     InputPlaylist,
     NumericParameter,
     RecipePreviewRequest,
+    SemanticScore,
+    SemanticScoreProvenance,
     SortSpec,
     Track,
 )
@@ -59,6 +61,54 @@ def _track(
         release_year=2024,
         audio_features=features,
     )
+
+
+def test_selected_semantic_score_drives_distribution_split_subgroup_and_scoped_sort() -> None:
+    provenance = SemanticScoreProvenance(backend="local-clap", model="checkpoint-v1")
+    key = "semantic:local-clap:checkpoint-v1:peak time"
+    tracks = [
+        _track("one", energy=0.1, danceability=0.5, tempo=100).model_copy(
+            update={
+                "semantic_scores": [
+                    SemanticScore(
+                        key=key,
+                        label="Peak Time",
+                        normalized_label="peak time",
+                        score=0.8,
+                        provenance=provenance,
+                    )
+                ]
+            }
+        ),
+        _track("two", energy=0.9, danceability=0.5, tempo=110).model_copy(
+            update={
+                "semantic_scores": [
+                    SemanticScore(
+                        key=key,
+                        label="Peak Time",
+                        normalized_label="peak time",
+                        score=0.2,
+                        provenance=provenance,
+                    )
+                ]
+            }
+        ),
+        _track("missing", energy=0.5, danceability=0.5, tempo=120),
+    ]
+    request = RecipePreviewRequest(
+        input_playlists=[InputPlaylist(id="source", name="Source", tracks=tracks)],
+        distribution_semantic_score_key=key,
+        split_factors=[BinSpec(parameter="energy", bin_count=2, semantic_score_key=key)],
+        subgroup=BinSpec(parameter="energy", bin_count=2, semantic_score_key=key),
+        sort=SortSpec(parameter="energy", direction="desc", semantic_score_key=key),
+    )
+
+    result = preview_recipe(request)
+
+    assert result.distribution.semantic_score_key == key
+    assert result.distribution.unavailable_track_count == 1
+    assert result.factor_unavailable_track_count == 1
+    assert result.outputs[-1].tracks[0].id == "missing"
 
 
 def _inputs() -> tuple[list[Track], list[InputPlaylist]]:

@@ -8,6 +8,7 @@ import {
   type Mp3ExportActionState,
 } from "./components/BatchDestinationPanel";
 import { FeatureProviderPicker } from "./components/FeatureProviderPicker";
+import { SemanticRankingControl, type SemanticScopes } from "./components/SemanticRankingControl";
 import {
   AnalysisPipelineProgress,
   type AnalysisPipelineStage,
@@ -117,8 +118,15 @@ import type {
   RecipePreviewResponse,
   SortDirection,
   SortParameter,
+  SemanticScore,
   Track,
 } from "./lib/types";
+
+export function mergeSemanticScores(existing: SemanticScore[] = [], incoming: SemanticScore[] = []): SemanticScore[] {
+  const merged = new Map(existing.map((score) => [score.key, score]));
+  incoming.forEach((score) => merged.set(score.key, score));
+  return [...merged.values()];
+}
 
 const LEVEL_OPTIONS = [2, 3, 4, 5, 6];
 const PREFERRED_FACTOR_PARAMETERS: NumericParameter[] = [
@@ -363,6 +371,7 @@ export default function App() {
   const [featureProviders, setFeatureProviders] = useState<AudioFeatureProviderOption[]>(
     DEFAULT_AUDIO_FEATURE_PROVIDERS,
   );
+  const [semanticScoreKeys, setSemanticScoreKeys] = useState<Record<keyof SemanticScopes, string | null>>({ distribution: null, split: null, subgroup: null, sort: null });
   const [recipeName, setRecipeName] = useState("Night Drive Levels");
   const [distributionParameter, setDistributionParameter] =
     useState<NumericParameter>("energy");
@@ -511,6 +520,10 @@ export default function App() {
     setAnalysisProgress(null);
   }, [featureProvider, selectedIds, sourceMode]);
 
+  useEffect(() => {
+    setSemanticScoreKeys({ distribution: null, split: null, subgroup: null, sort: null });
+  }, [selectedIds, sourceMode]);
+
   const playlists = sourceMode === "local" ? localPlaylists : demoPlaylists;
 
   const selectedPlaylists = useMemo(
@@ -522,6 +535,9 @@ export default function App() {
     [selectedPlaylists],
   );
   const uniqueTracks = useMemo(() => deduplicateTracks(selectedPlaylists), [selectedPlaylists]);
+  const selectedAudioPaths = useMemo(() => Object.fromEntries(
+    uniqueTracks.flatMap((track) => localAudioPaths[track.id] ? [[track.id, localAudioPaths[track.id]]] : []),
+  ), [localAudioPaths, uniqueTracks]);
   const numericParameterCoverage = useMemo(
     () => new Map<NumericParameter, ParameterCoverage>(
       NUMERIC_PARAMETERS.map(({ value }) => [value, parameterCoverage(uniqueTracks, value)]),
@@ -650,6 +666,7 @@ export default function App() {
         sort: sortEnabled
           ? { parameter: sortParameter, direction: sortDirection }
           : null,
+        semanticScoreKeys,
       })
         .then((result) => {
           if (!stale) setPreview(result);
@@ -680,6 +697,7 @@ export default function App() {
     subgroupBinCount,
     subgroupEnabled,
     subgroupParameter,
+    semanticScoreKeys,
   ]);
 
   const configuredFactorCombinations = splitFactorProduct(splitFactors);
@@ -1544,6 +1562,22 @@ export default function App() {
                   onChange={setFeatureProvider}
                   coverage={featureCoverage}
                 />
+                <SemanticRankingControl
+                  audioPaths={selectedAudioPaths}
+                  hasActiveScopes={Object.values(semanticScoreKeys).some(Boolean)}
+                  onClearScopes={() => setSemanticScoreKeys({ distribution: null, split: null, subgroup: null, sort: null })}
+                  onRanked={(ranking, scopes) => {
+                    const byTrack = new Map(ranking.results.map((item) => [item.track_id, item.scores]));
+                    setLocalPlaylists((current) => current.map((playlist) => ({
+                      ...playlist,
+                      tracks: playlist.tracks.map((track) => byTrack.has(track.id)
+                        ? { ...track, semantic_scores: mergeSemanticScores(track.semantic_scores, byTrack.get(track.id) ?? []) }
+                        : track),
+                    })));
+                    setSemanticScoreKeys((current) => Object.fromEntries(Object.entries(current).map(([scope, key]) => [scope, scopes[scope as keyof SemanticScopes] ? ranking.score_key : key])) as Record<keyof SemanticScopes, string | null>);
+                  }}
+                />
+                {Object.values(semanticScoreKeys).some(Boolean) && <p className="mt-2 text-[10px] text-acid/70">Semantic scores apply only to the explicitly selected recipe scopes.</p>}
               </div>
             </div>
           )}
@@ -1687,7 +1721,7 @@ export default function App() {
                   <div>
                     <p className="eyebrow">Analyze the source pool</p>
                     <h2 id="distribution-heading" className="mt-1 font-display text-xl font-semibold">Distribution</h2>
-                    <p className="mt-2"><DistributionLegend parameter={distributionParameter} /></p>
+                    <p className="mt-2"><DistributionLegend parameter={distributionParameter} semanticScoreKey={semanticScoreKeys.distribution} /></p>
                   </div>
                   <div className="distribution-controls sm:w-[22rem]">
                     <SelectField label="Parameter" value={distributionParameter} onChange={(value) => setDistributionParameter(value as NumericParameter)}>

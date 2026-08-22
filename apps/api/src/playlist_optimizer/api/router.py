@@ -1,3 +1,4 @@
+import math
 import os
 from ipaddress import ip_address
 from pathlib import Path
@@ -35,11 +36,30 @@ from playlist_optimizer.models import (
     ProgressToken,
     RecipePreviewRequest,
     RecipePreviewResponse,
+    SemanticBackendCapabilities,
+    SemanticEmbedding,
+    SemanticEmbeddingRequest,
+    SemanticEmbeddingResponse,
+    SemanticRankedScore,
+    SemanticRankRequest,
+    SemanticRankResponse,
+    SemanticReferenceRankRequest,
+    SemanticScoreProvenance,
+    SemanticTrackResult,
 )
 from playlist_optimizer.optimization import optimize_tracks, preview_recipe, summarize_tracks
 from playlist_optimizer.providers import (
     AudioFeatureProviderRegistry,
     get_audio_feature_provider_registry,
+)
+from playlist_optimizer.semantic import (
+    SemanticBackend,
+    SemanticBackendRegistry,
+    cosine_similarity,
+    get_semantic_backend,
+    get_semantic_registry,
+    normalize_semantic_label,
+    semantic_score_key,
 )
 from playlist_optimizer.spotify import SpotifyService, get_spotify_service
 
@@ -85,6 +105,272 @@ def resolve_audio_features(
     if payload.provider == "essentia":
         _require_loopback(http_request)
     return registry.resolve(payload)
+
+
+@router.get("/semantic/capabilities", response_model=SemanticBackendCapabilities)
+def semantic_capabilities(
+    backend: Annotated[SemanticBackend, Depends(get_semantic_backend)],
+) -> SemanticBackendCapabilities:
+    return backend.capabilities()
+
+
+@router.get("/semantic/backends", response_model=list[SemanticBackendCapabilities])
+def semantic_backends(
+    registry: Annotated[SemanticBackendRegistry, Depends(get_semantic_registry)],
+) -> list[SemanticBackendCapabilities]:
+    return registry.infos()
+
+
+@router.post("/semantic/rank", response_model=SemanticRankResponse)
+def rank_semantic_audio(
+    payload: SemanticRankRequest,
+    http_request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    backend: Annotated[SemanticBackend, Depends(get_semantic_backend)],
+    registry: Annotated[SemanticBackendRegistry, Depends(get_semantic_registry)],
+) -> SemanticRankResponse:
+    _require_loopback(http_request)
+    if payload.backend_id != "local-clap":
+        selected = registry.get(payload.backend_id)
+        if selected is None:
+            raise HTTPException(status_code=404, detail="Semantic backend was not found")
+        backend = selected
+    capabilities = backend.capabilities()
+    if "text_similarity" not in capabilities.capabilities:
+        raise HTTPException(
+            status_code=422, detail="Selected backend does not support text similarity"
+        )
+    if not capabilities.available:
+        raise HTTPException(
+            status_code=503, detail=capabilities.detail or "Semantic backend unavailable"
+        )
+    if (
+        len(payload.audio_paths) > capabilities.max_tracks
+        or len(payload.labels) > capabilities.max_labels
+    ):
+        raise HTTPException(
+            status_code=422, detail="Semantic ranking request exceeds backend bounds"
+        )
+    root = settings.semantic_audio_root or settings.clap_audio_root or settings.essentia_audio_root
+    if root is None or not root.is_dir():
+        raise HTTPException(status_code=503, detail="No authorized local audio root is configured")
+    ordered = list(payload.audio_paths.items())
+    paths: list[Path] = []
+    try:
+        for _, relative in ordered:
+            requested = Path(relative)
+            if requested.is_absolute():
+                raise ValueError("Semantic audio paths must be relative")
+            resolved = (root / requested).resolve(strict=True)
+            resolved.relative_to(root.resolve())
+            if not resolved.is_file():
+                raise ValueError("Semantic audio path must be a file")
+            paths.append(resolved)
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid authorized audio path") from exc
+    labels = [" ".join(label.split()) for label in payload.labels]
+    try:
+        ranked = backend.rank(paths, labels)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502, detail="Semantic backend returned malformed output"
+        ) from exc
+    if len(ranked) > len(paths) or any(
+        not item.relative_path
+        or any(
+            not isinstance(score, (int, float)) or not math.isfinite(score)
+            for score in item.scores.values()
+        )
+        for item in ranked
+    ):
+        raise HTTPException(status_code=502, detail="Semantic backend returned malformed output")
+    by_path = {item.relative_path: item for item in ranked}
+    provenance = SemanticScoreProvenance(backend=capabilities.id, model=capabilities.model)
+    results: list[SemanticTrackResult] = []
+    missing: list[str] = []
+    for (track_id, _), path in zip(ordered, paths, strict=True):
+        item = by_path.get(str(path)) or by_path.get(path.name)
+        scores = (
+            []
+            if item is None
+            else [
+                SemanticRankedScore(
+                    key=semantic_score_key(capabilities.id, capabilities.model, label),
+                    label=label,
+                    normalized_label=normalize_semantic_label(label),
+                    score=score,
+                    provenance=provenance,
+                )
+                for label, score in item.scores.items()
+            ]
+        )
+        if not scores:
+            missing.append(track_id)
+        results.append(
+            SemanticTrackResult(
+                track_id=track_id,
+                status="complete" if scores else "unavailable",
+                scores=scores,
+                error=item.error if item else "Backend returned no result",
+            )
+        )
+    return SemanticRankResponse(
+        backend=capabilities.model_dump(),
+        score_key=semantic_score_key(capabilities.id, capabilities.model, labels[0]),
+        results=results,
+        missing_track_ids=missing,
+    )
+
+
+@router.post("/semantic/reference-rank", response_model=SemanticRankResponse)
+def rank_semantic_reference(
+    payload: SemanticReferenceRankRequest,
+    http_request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    registry: Annotated[SemanticBackendRegistry, Depends(get_semantic_registry)],
+) -> SemanticRankResponse:
+    _require_loopback(http_request)
+    backend = registry.get(payload.backend_id)
+    if backend is None:
+        raise HTTPException(status_code=404, detail="Semantic backend was not found")
+    capabilities = backend.capabilities()
+    if not capabilities.available:
+        raise HTTPException(
+            status_code=503, detail=capabilities.detail or "Semantic backend unavailable"
+        )
+    if "reference_similarity" not in capabilities.capabilities:
+        raise HTTPException(
+            status_code=422, detail="Selected backend does not support reference similarity"
+        )
+    if len(payload.audio_paths) > capabilities.max_tracks:
+        raise HTTPException(status_code=422, detail="Reference ranking exceeds backend bounds")
+    if payload.reference_track_id not in payload.audio_paths:
+        raise HTTPException(
+            status_code=422, detail="Reference track must be included in audio_paths"
+        )
+    paths = _resolve_semantic_paths(payload.audio_paths, settings)
+    try:
+        embeddings = backend.embed(paths)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if len(embeddings) != len(paths):
+        raise HTTPException(status_code=502, detail="Semantic backend returned an invalid batch")
+    reference_index = list(payload.audio_paths).index(payload.reference_track_id)
+    label = f"similar to {payload.reference_track_id}"
+    try:
+        _validate_embeddings(embeddings, settings.semantic_max_embedding_dimension)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    key = semantic_score_key(capabilities.id, capabilities.model, label)
+    provenance = SemanticScoreProvenance(backend=capabilities.id, model=capabilities.model)
+    results = [
+        SemanticTrackResult(
+            track_id=track_id,
+            status="complete",
+            scores=[
+                SemanticRankedScore(
+                    key=key,
+                    label=label,
+                    normalized_label=normalize_semantic_label(label),
+                    score=_finite_similarity(row, embeddings[reference_index]),
+                    provenance=provenance,
+                )
+            ],
+        )
+        for track_id, row in zip(payload.audio_paths, embeddings, strict=True)
+    ]
+    return SemanticRankResponse(backend=capabilities, score_key=key, results=results)
+
+
+@router.post("/semantic/embeddings", response_model=SemanticEmbeddingResponse)
+def extract_semantic_embeddings(
+    payload: SemanticEmbeddingRequest,
+    http_request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    registry: Annotated[SemanticBackendRegistry, Depends(get_semantic_registry)],
+) -> SemanticEmbeddingResponse:
+    _require_loopback(http_request)
+    backend = registry.get(payload.backend_id)
+    if backend is None:
+        raise HTTPException(status_code=404, detail="Semantic backend was not found")
+    capabilities = backend.capabilities()
+    if not capabilities.available:
+        raise HTTPException(
+            status_code=503, detail=capabilities.detail or "Semantic backend unavailable"
+        )
+    if "embedding_extraction" not in capabilities.capabilities:
+        raise HTTPException(status_code=422, detail="Selected backend does not expose embeddings")
+    if len(payload.audio_paths) > settings.semantic_max_embeddings:
+        raise HTTPException(status_code=422, detail="Embedding request exceeds batch limit")
+    paths = _resolve_semantic_paths(payload.audio_paths, settings)
+    try:
+        rows = backend.embed(paths)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if len(rows) != len(paths):
+        raise HTTPException(status_code=502, detail="Semantic backend returned an invalid batch")
+    try:
+        dimension = _validate_embeddings(rows, settings.semantic_max_embedding_dimension)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return SemanticEmbeddingResponse(
+        backend=capabilities,
+        dimension=dimension,
+        embeddings=[
+            SemanticEmbedding(track_id=track_id, values=row)
+            for track_id, row in zip(payload.audio_paths, rows, strict=True)
+        ],
+    )
+
+
+def _resolve_semantic_paths(audio_paths: dict[str, str], settings: Settings) -> list[Path]:
+    root = settings.semantic_audio_root or settings.clap_audio_root or settings.essentia_audio_root
+    if root is None or not root.is_dir():
+        raise HTTPException(status_code=503, detail="No authorized local audio root is configured")
+    resolved_paths: list[Path] = []
+    try:
+        authorized_root = root.resolve()
+        for relative in audio_paths.values():
+            requested = Path(relative)
+            if requested.is_absolute():
+                raise ValueError
+            resolved = (authorized_root / requested).resolve(strict=True)
+            resolved.relative_to(authorized_root)
+            if not resolved.is_file():
+                raise ValueError
+            resolved_paths.append(resolved)
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid authorized audio path") from exc
+    return resolved_paths
+
+
+def _validate_embeddings(rows: list[list[float]], max_dimension: int) -> int:
+    dimension = len(rows[0]) if rows else 0
+    if not dimension or dimension > max_dimension or any(len(row) != dimension for row in rows):
+        raise ValueError("Semantic backend returned invalid embedding dimensions")
+    if any(
+        not isinstance(value, (int, float)) or not math.isfinite(value)
+        for row in rows
+        for value in row
+    ):
+        raise ValueError("Semantic backend returned non-finite embeddings")
+    return dimension
+
+
+def _finite_similarity(left: list[float], right: list[float]) -> float:
+    try:
+        score = cosine_similarity(left, right)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502, detail="Semantic backend returned invalid embeddings"
+        ) from exc
+    if not math.isfinite(score):
+        raise HTTPException(
+            status_code=502, detail="Semantic backend returned non-finite embeddings"
+        )
+    return score
 
 
 @router.get(
