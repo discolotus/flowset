@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 import math
 import os
-from functools import lru_cache
+from functools import cached_property, lru_cache
 from hashlib import sha256
 from importlib.util import find_spec
 from pathlib import Path
@@ -69,18 +70,24 @@ class _ConfiguredBackend:
     def _model_identity(self) -> str:
         assert self.checkpoint is not None
         resolved = self.checkpoint.resolve()
-        stat = resolved.stat()
-        fingerprint = sha256(f"{resolved}:{stat.st_size}:{stat.st_mtime_ns}".encode()).hexdigest()[
-            :12
-        ]
+        manifest = resolved / "manifest.json" if resolved.is_dir() else None
+        if manifest and manifest.is_file():
+            fingerprint_source = manifest.read_bytes()
+        else:
+            stat = resolved.stat()
+            fingerprint_source = f"{resolved}:{stat.st_size}:{stat.st_mtime_ns}".encode()
+        fingerprint = sha256(fingerprint_source).hexdigest()[:12]
         return f"{resolved.name}@{fingerprint}"
 
 
-def _enable_huggingface_offline() -> None:
+def _enable_huggingface_offline(cache_dir: Path | None = None) -> None:
     """Keep optional local backends from resolving nested Hub model IDs over the network."""
 
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    if cache_dir is not None:
+        resolved_cache = str(cache_dir.resolve())
+        os.environ["HF_HUB_CACHE"] = resolved_cache
     # The libraries cache these switches at import time. Update already-imported modules too so
     # backend call order cannot accidentally re-enable downloads.
     try:
@@ -89,12 +96,16 @@ def _enable_huggingface_offline() -> None:
 
         hub_constants.HF_HUB_OFFLINE = True
         huggingface_hub.HF_HUB_OFFLINE = True
+        if cache_dir is not None:
+            hub_constants.HF_HUB_CACHE = str(cache_dir.resolve())
     except (ImportError, ValueError):
         pass
     try:
         import transformers.utils.hub as transformers_hub  # type: ignore[import-not-found]
 
         transformers_hub.HF_HUB_OFFLINE = True
+        if cache_dir is not None and hasattr(transformers_hub, "TRANSFORMERS_CACHE"):
+            transformers_hub.TRANSFORMERS_CACHE = str(cache_dir.resolve())
         if hasattr(transformers_hub, "_is_offline_mode"):
             transformers_hub._is_offline_mode = True
     except (ImportError, ValueError):
@@ -111,26 +122,40 @@ class LocalClapBackend(_ConfiguredBackend):
         "CLAP software and checkpoint licenses are operator-supplied and must be reviewed."
     )
 
-    def rank(self, audio_paths: list[Path], labels: list[str]) -> list[SemanticRankResult]:
+    @cached_property
+    def _model(self):
         checkpoint = self._require_checkpoint()
-        # laion-clap constructs a RoBERTa tokenizer while loading a local .pt checkpoint. Force
-        # that nested lookup to use the local Hugging Face cache instead of downloading silently.
-        _enable_huggingface_offline()
+        # laion-clap constructs a RoBERTa tokenizer and encoder while loading a local .pt
+        # checkpoint. The explicit setup command provisions both into this backend-owned cache.
+        _enable_huggingface_offline(checkpoint.parent / "hf-cache")
         try:
             import laion_clap  # type: ignore[import-not-found]
         except ImportError as exc:
             raise RuntimeError("Install Flowset's optional CLAP dependencies") from exc
         try:
-            model = laion_clap.CLAP_Module(enable_fusion=False)
-            model.load_ckpt(str(checkpoint))
+            model = laion_clap.CLAP_Module(
+                enable_fusion=False, amodel="HTSAT-tiny", device="cpu"
+            )
+            model.load_ckpt(str(checkpoint), verbose=False)
+            model.model.eval()
         except (OSError, RuntimeError, ValueError) as exc:
             raise RuntimeError(
-                "CLAP's local checkpoint is invalid, or its required RoBERTa tokenizer is absent; "
-                "offline mode forbids downloading it"
+                "CLAP's local checkpoint is invalid, or its required RoBERTa tokenizer/encoder "
+                "is absent; run `make setup-clap-models` before starting Flowset"
             ) from exc
-        text = model.get_text_embedding(labels, use_tensor=True)
-        audio = model.get_audio_embedding_from_filelist([str(path) for path in audio_paths])
-        rows = (audio @ text.T).detach().cpu().tolist()
+        return model
+
+    def rank(self, audio_paths: list[Path], labels: list[str]) -> list[SemanticRankResult]:
+        model = self._model
+        text_rows = _tolist(model.get_text_embedding(labels, use_tensor=True))
+        audio_rows = _tolist(
+            model.get_audio_embedding_from_filelist([str(path) for path in audio_paths])
+        )
+        rows = [
+            [cosine_similarity(audio_row, text_row) for text_row in text_rows]
+            for audio_row in audio_rows
+        ]
+        _require_finite_rows(rows, "CLAP similarity")
         return [
             SemanticRankResult(
                 relative_path=str(path), scores=dict(zip(labels, map(float, row), strict=True))
@@ -147,54 +172,58 @@ class LocalMuqMulanBackend(_ConfiguredBackend):
     display_name = "Local MuQ-MuLan"
     capability_names = ["text_similarity", "embedding_extraction"]
     checkpoint_setting = "MUQ_MULAN_CHECKPOINT"
-    runtime_modules = ("muq", "torch", "torchaudio")
+    runtime_modules = ("librosa", "muq", "torch")
     license_note = "Published MuQ-MuLan weights are CC-BY-NC-4.0 and are not bundled by Flowset."
 
+    @cached_property
     def _model(self):
         checkpoint = self._require_checkpoint()
-        # MuQ recursively resolves its configured audio and text foundation models without
-        # forwarding local_files_only. Set both supported offline switches before importing MuQ
-        # so Transformers and huggingface_hub cannot turn nested model IDs into network requests.
-        _enable_huggingface_offline()
+        # MuQ recursively resolves its configured audio and text foundation models. The explicit
+        # setup command provisions all three pinned repositories into this backend-owned cache.
+        cache_dir = checkpoint / "hf-cache"
+        _enable_huggingface_offline(cache_dir)
         try:
+            import torch  # type: ignore[import-not-found]
             from muq import MuQMuLan  # type: ignore[import-not-found]
         except ImportError as exc:
             raise RuntimeError("Install the optional MuQ-MuLan runtime") from exc
         try:
-            return MuQMuLan.from_pretrained(str(checkpoint), local_files_only=True).eval()
-        except TypeError as exc:
+            config = json.loads((checkpoint / "config.json").read_text())
+            model = MuQMuLan(config, hf_hub_cache_dir=str(cache_dir))
+            state = torch.load(
+                checkpoint / "pytorch_model.bin", map_location="cpu", weights_only=True
+            )
+            model.load_state_dict(state, strict=True)
+            return model.eval()
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
             raise RuntimeError(
-                "Installed MuQ runtime cannot guarantee local-only checkpoint loading"
-            ) from exc
-        except OSError as exc:
-            raise RuntimeError(
-                "MuQ-MuLan or one of its configured foundation models is absent from the local "
-                "Hugging Face cache; offline mode forbids downloading it"
+                "MuQ-MuLan or one of its configured foundation models is absent or invalid; "
+                "run `make setup-muq-mulan-models` before starting Flowset"
             ) from exc
 
     def _embed_with_model(self, model, audio_paths: list[Path]) -> list[list[float]]:
         try:
+            import librosa  # type: ignore[import-not-found]
             import torch  # type: ignore[import-not-found]
-            import torchaudio  # type: ignore[import-not-found]
         except ImportError as exc:
             raise RuntimeError("Install the optional MuQ-MuLan audio runtime") from exc
-        waveforms = []
+        rows: list[list[float]] = []
         for path in audio_paths:
-            waveform, sample_rate = torchaudio.load(str(path))
-            waveform = waveform.mean(dim=0)
-            if sample_rate != 24000:
-                waveform = torchaudio.functional.resample(waveform, sample_rate, 24000)
-            waveforms.append(waveform[: 24000 * 30])
-        padded = torch.nn.utils.rnn.pad_sequence(waveforms, batch_first=True)
-        with torch.inference_mode():
-            rows = model(wavs=padded, texts=None)
-        return [[float(value) for value in row] for row in _tolist(rows)]
+            waveform, _ = librosa.load(path, sr=24000, mono=True, duration=30)
+            if len(waveform) == 0:
+                raise RuntimeError(f"MuQ-MuLan could not decode audio from {path.name}")
+            tensor = torch.from_numpy(waveform).float().unsqueeze(0)
+            with torch.inference_mode():
+                embedding = model(wavs=tensor, texts=None)[0]
+            rows.append([float(value) for value in _tolist(embedding)])
+        _require_finite_rows(rows, "MuQ-MuLan embedding")
+        return rows
 
     def embed(self, audio_paths: list[Path]) -> list[list[float]]:
-        return self._embed_with_model(self._model(), audio_paths)
+        return self._embed_with_model(self._model, audio_paths)
 
     def rank(self, audio_paths: list[Path], labels: list[str]) -> list[SemanticRankResult]:
-        model = self._model()
+        model = self._model
         audio = self._embed_with_model(model, audio_paths)
         try:
             import torch  # type: ignore[import-not-found]
@@ -232,8 +261,10 @@ class LocalMertBackend(_ConfiguredBackend):
     def rank(self, audio_paths: list[Path], labels: list[str]) -> list[SemanticRankResult]:
         raise RuntimeError("MERT does not support text similarity")
 
-    def embed(self, audio_paths: list[Path]) -> list[list[float]]:
+    @cached_property
+    def _runtime(self):
         checkpoint = self._require_checkpoint()
+        _enable_huggingface_offline()
         try:
             import librosa  # type: ignore[import-not-found]
             import torch  # type: ignore[import-not-found]
@@ -243,12 +274,31 @@ class LocalMertBackend(_ConfiguredBackend):
             )
         except ImportError as exc:
             raise RuntimeError("Install the optional MERT runtime") from exc
-        load_options = {"local_files_only": True, "trust_remote_code": True}
+        local_options = {"local_files_only": True}
         try:
-            extractor = AutoFeatureExtractor.from_pretrained(str(checkpoint), **load_options)
-            model = AutoModel.from_pretrained(str(checkpoint), **load_options).eval()
+            extractor = AutoFeatureExtractor.from_pretrained(str(checkpoint), **local_options)
+            model, loading_info = AutoModel.from_pretrained(
+                str(checkpoint),
+                trust_remote_code=True,
+                output_loading_info=True,
+                **local_options,
+            )
+            incomplete = {
+                key: value
+                for key, value in loading_info.items()
+                if key in {"missing_keys", "unexpected_keys", "mismatched_keys"} and value
+            }
+            if incomplete:
+                raise RuntimeError(f"MERT checkpoint loaded incompletely: {incomplete}")
+            model = model.eval()
         except (OSError, RuntimeError, ValueError) as exc:
-            raise RuntimeError("MERT could not load the trusted local checkpoint") from exc
+            raise RuntimeError(
+                "MERT could not load the trusted local checkpoint; run `make setup-mert-models`"
+            ) from exc
+        return extractor, model, librosa, torch
+
+    def embed(self, audio_paths: list[Path]) -> list[list[float]]:
+        extractor, model, librosa, torch = self._runtime
         sample_rate = extractor.sampling_rate
         result: list[list[float]] = []
         for path in audio_paths:
@@ -257,6 +307,7 @@ class LocalMertBackend(_ConfiguredBackend):
             with torch.inference_mode():
                 hidden = model(**inputs).last_hidden_state.mean(dim=1)[0]
             result.append([float(value) for value in hidden.detach().cpu().tolist()])
+        _require_finite_rows(result, "MERT embedding")
         return result
 
 

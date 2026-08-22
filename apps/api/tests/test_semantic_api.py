@@ -255,9 +255,14 @@ def test_muq_rank_loads_one_eval_model_offline_and_prefers_upstream_similarity(
 ) -> None:
     checkpoint = tmp_path / "local-muq"
     checkpoint.mkdir()
+    (checkpoint / "config.json").write_text('{"model": "test"}')
+    (checkpoint / "pytorch_model.bin").write_bytes(b"weights")
     calls: list[tuple[str, dict[str, object]]] = []
 
     class FakeModel:
+        def load_state_dict(self, state, *, strict):
+            calls.append(("load_state_dict", {"state": state, "strict": strict}))
+
         def eval(self):
             calls.append(("eval", {}))
             return self
@@ -270,28 +275,30 @@ def test_muq_rank_loads_one_eval_model_offline_and_prefers_upstream_similarity(
             calls.append(("calc_similarity", {"audio": audio, "text": text}))
             return [[0.75]]
 
-    class FakeMuQMuLan:
-        @classmethod
-        def from_pretrained(cls, identifier, **options):
-            calls.append((identifier, options))
+    class FakeMuQMuLan(FakeModel):
+        def __init__(self, config, *, hf_hub_cache_dir):
+            calls.append(("init", {"config": config, "cache": hf_hub_cache_dir}))
             assert os.environ["HF_HUB_OFFLINE"] == "1"
             assert os.environ["TRANSFORMERS_OFFLINE"] == "1"
-            assert Path(identifier).resolve() == checkpoint.resolve()
-            return FakeModel()
+            assert Path(hf_hub_cache_dir).resolve() == (checkpoint / "hf-cache").resolve()
 
     monkeypatch.setitem(sys.modules, "muq", SimpleNamespace(MuQMuLan=FakeMuQMuLan))
     monkeypatch.setitem(
         sys.modules,
         "torch",
-        SimpleNamespace(inference_mode=nullcontext, as_tensor=lambda value: value),
+        SimpleNamespace(
+            inference_mode=nullcontext,
+            as_tensor=lambda value: value,
+            load=lambda path, **options: {"weight": 1},
+        ),
     )
     backend = LocalMuqMulanBackend(checkpoint)
     monkeypatch.setattr(backend, "_embed_with_model", lambda model, paths: [[1.0, 0.0]])
 
     result = backend.rank([tmp_path / "audio.wav"], ["warm"])
 
-    loads = [call for call in calls if call[0] == str(checkpoint)]
-    assert loads == [(str(checkpoint), {"local_files_only": True})]
+    assert any(call[0] == "init" for call in calls)
+    assert ("load_state_dict", {"state": {"weight": 1}, "strict": True}) in calls
     assert ("eval", {}) in calls
     assert any(call[0] == "calc_similarity" for call in calls)
     assert result[0].scores == {"warm": 0.75}
@@ -302,19 +309,19 @@ def test_muq_missing_nested_local_artifact_fails_without_download(
 ) -> None:
     checkpoint = tmp_path / "local-muq"
     checkpoint.mkdir()
+    (checkpoint / "config.json").write_text('{"model": "test"}')
 
     class FakeMuQMuLan:
-        @classmethod
-        def from_pretrained(cls, identifier, **options):
-            assert identifier == str(checkpoint)
-            assert options == {"local_files_only": True}
+        def __init__(self, config, *, hf_hub_cache_dir):
+            assert config == {"model": "test"}
+            assert Path(hf_hub_cache_dir).resolve() == (checkpoint / "hf-cache").resolve()
             assert os.environ["HF_HUB_OFFLINE"] == "1"
             assert os.environ["TRANSFORMERS_OFFLINE"] == "1"
             raise OSError("OpenMuQ/MuQ-large-msd-iter is not cached")
 
     monkeypatch.setitem(sys.modules, "muq", SimpleNamespace(MuQMuLan=FakeMuQMuLan))
-    with pytest.raises(RuntimeError, match="absent from the local Hugging Face cache"):
-        LocalMuqMulanBackend(checkpoint)._model()
+    with pytest.raises(RuntimeError, match="absent or invalid"):
+        _ = LocalMuqMulanBackend(checkpoint)._model
 
 
 def test_mert_uses_trusted_local_checkpoint_and_extractor_sample_rate(
@@ -370,7 +377,11 @@ def test_mert_uses_trusted_local_checkpoint_and_extractor_sample_rate(
         @classmethod
         def from_pretrained(cls, identifier, **options):
             loads.append(("model", identifier, options))
-            return FakeModel()
+            return FakeModel(), {
+                "missing_keys": [],
+                "unexpected_keys": [],
+                "mismatched_keys": [],
+            }
 
     def fake_load(path, **options):
         audio_loads.append({"path": path, **options})
@@ -388,10 +399,17 @@ def test_mert_uses_trusted_local_checkpoint_and_extractor_sample_rate(
     )
 
     assert LocalMertBackend(checkpoint).embed([audio_path]) == [[1.0, 2.0]]
-    expected = {"local_files_only": True, "trust_remote_code": True}
     assert loads == [
-        ("extractor", str(checkpoint), expected),
-        ("model", str(checkpoint), expected),
+        ("extractor", str(checkpoint), {"local_files_only": True}),
+        (
+            "model",
+            str(checkpoint),
+            {
+                "local_files_only": True,
+                "trust_remote_code": True,
+                "output_loading_info": True,
+            },
+        ),
     ]
     assert audio_loads == [{"path": audio_path, "sr": 16000, "mono": True, "duration": 30}]
     assert extractor_calls == [{"sampling_rate": 16000, "return_tensors": "pt"}]

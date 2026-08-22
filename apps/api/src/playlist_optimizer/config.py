@@ -4,6 +4,9 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_API_ROOT = Path(__file__).resolve().parents[2]
+_SEMANTIC_MODEL_ROOT = _API_ROOT / ".models" / "semantic"
+
 
 class Settings(BaseSettings):
     app_env: str = "development"
@@ -22,12 +25,12 @@ class Settings(BaseSettings):
     essentia_audio_root: Path | None = None
     essentia_model_dir: Path | None = None
     essentia_mood_worker_timeout_seconds: float = 180.0
-    clap_checkpoint: Path | None = None
+    clap_checkpoint: Path | None = _SEMANTIC_MODEL_ROOT / "clap" / "630k-audioset-best.pt"
     clap_audio_root: Path | None = None
     clap_max_tracks: int = Field(default=100, ge=1, le=500)
     clap_max_labels: int = Field(default=20, ge=1, le=50)
-    muq_mulan_checkpoint: Path | None = None
-    mert_checkpoint: Path | None = None
+    muq_mulan_checkpoint: Path | None = _SEMANTIC_MODEL_ROOT / "muq-mulan"
+    mert_checkpoint: Path | None = _SEMANTIC_MODEL_ROOT / "mert" / "MERT-v1-95M"
     semantic_audio_root: Path | None = None
     semantic_max_embeddings: int = Field(default=20, ge=1, le=20)
     semantic_max_embedding_dimension: int = Field(default=4096, ge=1, le=8192)

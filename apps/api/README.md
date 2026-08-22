@@ -7,18 +7,40 @@ Interactive API documentation is available at <http://127.0.0.1:8000/docs>.
 
 ## Optional semantic runtimes
 
-Install only the local backend you intend to operate: `make setup-clap`, `make setup-muq-mulan`,
-or `make setup-mert`. The extras leave direct runtime requirements broadly constrained while
-`uv.lock` records the exact versions currently resolved for reproducible installs; checkpoint
-compatibility must still be verified in the Python 3.12 environment. CLAP expects `laion-clap`;
-MuQ-MuLan expects `muq`, PyTorch, and torchaudio; MERT expects librosa, PyTorch, and Transformers.
-Model weights are never installed or downloaded by these commands, and desktop/default installs do
-not include these heavy experimental extras.
-CLAP also requires the `roberta-base` tokenizer to already exist in the local Hugging Face cache;
-Flowset forces Hub/Transformers offline mode before loading CLAP or MuQ-MuLan and fails clearly when
-a required nested artifact is missing.
-MERT loads only an explicit local checkpoint, but its official model format requires
-`trust_remote_code=True`; Python code stored in that trusted checkpoint directory may execute.
+Flowset does not bundle these multi-gigabyte experimental models, but it now provides explicit,
+reproducible installation commands that download pinned revisions, verify the primary weight files,
+provision every nested Hugging Face dependency for offline use, and write a local manifest:
+
+```bash
+make setup-clap-models
+make setup-muq-mulan-models ACCEPT_RESTRICTED_WEIGHTS=1
+make setup-mert-models ACCEPT_RESTRICTED_WEIGHTS=1 ACCEPT_TRUSTED_CODE=1
+```
+
+Use `make setup-semantic-models ACCEPT_RESTRICTED_WEIGHTS=1 ACCEPT_TRUSTED_CODE=1` to provision all
+three. Artifacts are installed beneath the gitignored `apps/api/.models/semantic` directory, which
+is also the API's default checkpoint location. `CLAP_CHECKPOINT`, `MUQ_MULAN_CHECKPOINT`, and
+`MERT_CHECKPOINT` remain available as deployment overrides. Dependency-only commands
+`make setup-clap`, `make setup-muq-mulan`, and `make setup-mert` do not download weights.
+
+CLAP uses the pinned `630k-audioset-best.pt` HTSAT-tiny checkpoint and separately caches the BERT,
+RoBERTa, and BART resources that `laion-clap` resolves at import/model-construction time.
+MuQ-MuLan uses the pinned official top-level weights plus its MuQ audio encoder and XLM-RoBERTa
+text encoder. Flowset loads the top-level MuQ state dict with strict key validation and forces all
+nested resolution offline. MERT uses the pinned 95M checkpoint, executes its audited local custom
+Python files through `trust_remote_code=True`, and rejects missing, unexpected, or mismatched
+weights instead of accepting a partially initialized model.
+
+The current local artifact set is approximately 7.3 GB. Published MuQ-MuLan and MERT weights are
+CC-BY-NC-4.0, so their setup commands require explicit non-commercial-use acknowledgement. MERT's
+setup command separately requires acknowledgement of trusted checkpoint code. Run real audio/text
+inference—not mocks—with:
+
+```bash
+make test-semantic-models-smoke
+```
+
+Each runtime is loaded once per backend instance and remains offline during API requests.
 
 ## Audio-feature providers
 

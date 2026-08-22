@@ -5,22 +5,27 @@ preview also contains third-party components whose licenses continue to apply.
 
 ## Optional local CLAP semantic ranking
 
-Flowset does not bundle CLAP software or model weights. CLAP checkpoint licensing varies. Operators must review the selected package version and checkpoint license before use.
+Flowset does not bundle CLAP software or model weights. The explicit setup command downloads the
+pinned `lukewys/laion_clap` `630k-audioset-best.pt` checkpoint, whose model card declares CC0-1.0,
+and its required tokenizer/encoder artifacts. Operators must still review the selected package and
+transitive dependency terms.
 
 - LAION-AI CLAP source: <https://github.com/LAION-AI/CLAP>
+- Provisioned checkpoint: <https://huggingface.co/lukewys/laion_clap>
 
 ## Optional local MuQ-MuLan and MERT experiments
 
-Flowset bundles neither MuQ-MuLan nor MERT software, runtime dependencies, or model weights.
-Their published weights are licensed CC-BY-NC-4.0. Operators must provide local checkpoints and
-review all applicable code, dataset, and checkpoint terms. MERT is exposed only for music
-embeddings and reference-track similarity, not text-language scoring; its trusted local checkpoint
-code may execute when loaded.
+Flowset bundles neither MuQ-MuLan nor MERT software, runtime dependencies, nor model weights. Their
+explicit setup commands download pinned artifacts only after the operator accepts the applicable
+restrictions. MuQ code is MIT licensed; published MuQ and MuQ-MuLan weights are CC-BY-NC-4.0. MERT
+weights are also CC-BY-NC-4.0. Operators must review all applicable code, dataset, and checkpoint
+terms. MERT is exposed only for music embeddings and reference-track similarity, not text-language
+scoring; its checksummed local `configuration_MERT.py` and `modeling_MERT.py` execute when loaded.
 
 - MuQ official source: <https://github.com/tencent-ailab/MuQ>
 - MuQ-MuLan model card: <https://huggingface.co/OpenMuQ/MuQ-MuLan-large>
 - MERT official source: <https://github.com/yizhilll/MERT>
-- MERT model card: <https://huggingface.co/m-a-p/MERT-v1-330M>
+- Provisioned MERT model card: <https://huggingface.co/m-a-p/MERT-v1-95M>
 
 ## Essentia and model files
 
