@@ -222,6 +222,54 @@ def test_semantic_rank_rejects_escaping_paths(tmp_path: Path) -> None:
     assert response.status_code == 400
 
 
+def test_semantic_rank_rejects_absolute_missing_directory_and_symlink_escape(
+    tmp_path: Path,
+) -> None:
+    authorized = tmp_path / "authorized"
+    authorized.mkdir()
+    outside = tmp_path / "outside.wav"
+    outside.write_bytes(b"outside")
+    directory = authorized / "not-a-file"
+    directory.mkdir()
+    symlink = authorized / "escaped.wav"
+    symlink.symlink_to(outside)
+    app.dependency_overrides[get_semantic_backend] = lambda: FakeSemanticBackend()
+    from playlist_optimizer.config import Settings, get_settings
+
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        essentia_audio_root=authorized, clap_checkpoint="fake/checkpoint-v1", _env_file=None
+    )
+    try:
+        client = TestClient(app)
+        for invalid_path in (str(outside), "missing.wav", "not-a-file", "escaped.wav"):
+            response = client.post(
+                "/api/v1/semantic/rank",
+                json={"labels": ["warm"], "audio_paths": {"track-1": invalid_path}},
+            )
+            assert response.status_code == 400, invalid_path
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_semantic_rank_rejects_non_loopback_clients(tmp_path: Path) -> None:
+    (tmp_path / "one.wav").write_bytes(b"one")
+    app.dependency_overrides[get_semantic_backend] = lambda: FakeSemanticBackend()
+    from playlist_optimizer.config import Settings, get_settings
+
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        essentia_audio_root=tmp_path, clap_checkpoint="fake/checkpoint-v1", _env_file=None
+    )
+    try:
+        response = TestClient(app, client=("198.51.100.1", 1234)).post(
+            "/api/v1/semantic/rank",
+            json={"labels": ["warm"], "audio_paths": {"track-1": "one.wav"}},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+
+
 def test_semantic_rank_rejects_non_finite_backend_scores_as_502(tmp_path: Path) -> None:
     (tmp_path / "one.wav").write_bytes(b"one")
     app.dependency_overrides[get_semantic_backend] = lambda: MalformedBackend(
@@ -296,8 +344,9 @@ def test_muq_rank_loads_one_eval_model_offline_and_prefers_upstream_similarity(
     monkeypatch.setattr(backend, "_embed_with_model", lambda model, paths: [[1.0, 0.0]])
 
     result = backend.rank([tmp_path / "audio.wav"], ["warm"])
+    backend.rank([tmp_path / "audio.wav"], ["warm"])
 
-    assert any(call[0] == "init" for call in calls)
+    assert sum(call[0] == "init" for call in calls) == 1
     assert ("load_state_dict", {"state": {"weight": 1}, "strict": True}) in calls
     assert ("eval", {}) in calls
     assert any(call[0] == "calc_similarity" for call in calls)
@@ -414,3 +463,36 @@ def test_mert_uses_trusted_local_checkpoint_and_extractor_sample_rate(
     ]
     assert audio_loads == [{"path": audio_path, "sr": 16000, "mono": True, "duration": 30}]
     assert extractor_calls == [{"sampling_rate": 16000, "return_tensors": "pt"}]
+
+
+def test_mert_rejects_incomplete_checkpoint_diagnostics(tmp_path: Path, monkeypatch) -> None:
+    checkpoint = tmp_path / "local-mert"
+    checkpoint.mkdir()
+
+    class FakeAutoFeatureExtractor:
+        @classmethod
+        def from_pretrained(cls, identifier, **options):
+            return object()
+
+    class FakeAutoModel:
+        @classmethod
+        def from_pretrained(cls, identifier, **options):
+            return object(), {
+                "missing_keys": ["encoder.layer.0.weight"],
+                "unexpected_keys": [],
+                "mismatched_keys": [],
+            }
+
+    monkeypatch.setitem(sys.modules, "librosa", SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace())
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(
+            AutoFeatureExtractor=FakeAutoFeatureExtractor,
+            AutoModel=FakeAutoModel,
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="trusted local checkpoint"):
+        _ = LocalMertBackend(checkpoint)._runtime

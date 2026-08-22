@@ -26,10 +26,12 @@ is also the API's default checkpoint location. `CLAP_CHECKPOINT`, `MUQ_MULAN_CHE
 CLAP uses the pinned `630k-audioset-best.pt` HTSAT-tiny checkpoint and separately caches the BERT,
 RoBERTa, and BART resources that `laion-clap` resolves at import/model-construction time.
 MuQ-MuLan uses the pinned official top-level weights plus its MuQ audio encoder and XLM-RoBERTa
-text encoder. Flowset loads the top-level MuQ state dict with strict key validation and forces all
-nested resolution offline. MERT uses the pinned 95M checkpoint, executes its audited local custom
-Python files through `trust_remote_code=True`, and rejects missing, unexpected, or mismatched
-weights instead of accepting a partially initialized model.
+text encoder. The provisioning helper verifies expected byte sizes and SHA-256 digests for every
+primary and nested model weight, records that integrity data in local manifests, and loads the
+top-level MuQ state dict with strict key validation while forcing all nested resolution offline.
+MERT uses the pinned 95M checkpoint, executes its audited local custom Python files through
+`trust_remote_code=True`, and rejects missing, unexpected, or mismatched weights instead of
+accepting a partially initialized model.
 
 The current local artifact set is approximately 7.3 GB. Published MuQ-MuLan and MERT weights are
 CC-BY-NC-4.0, so their setup commands require explicit non-commercial-use acknowledgement. MERT's

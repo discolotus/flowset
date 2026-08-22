@@ -61,6 +61,30 @@ _MERT_FILES = {
         "a2b8b747f72c06e0595aeae41ae5473f4364938c6b39b2c58be38c48e6bd3fcd",
     ),
 }
+_ROBERTA_FILES = {
+    "config.json": (481, "ef0185e2aae6e06c5f105a285006952c340e20c7dbf43c86ec82601b13fc45e9"),
+    "model.safetensors": (
+        498_818_054,
+        "5bde1d28afb363d0103324efeb5afc8b2b397fe5e04beabb9b1ef355255ade81",
+    ),
+}
+_MUQ_AUDIO_FILES = {
+    "config.json": (
+        3_133,
+        "237335ee27d8fb951ce778701a12a79e06c51ae636dd786f97e45f51ce532543",
+    ),
+    "model.safetensors": (
+        1_333_825_096,
+        "273febab2be02872c37d2c37e48a9d6c52c1c9392f3eeeabd498efa281ccb7a6",
+    ),
+}
+_XLM_ROBERTA_FILES = {
+    "config.json": (615, "d66ed8cd4f2a93b358c245e50736fa389ed4f35c0bae7aad0b32abb20c62b579"),
+    "model.safetensors": (
+        1_115_567_652,
+        "6fd4797bc397c3b8b55d6bb5740366b57e6a3ce91c04c77f22aafc0c128e6feb",
+    ),
+}
 
 _TRANSFORMER_PATTERNS = [
     "config.json",
@@ -103,6 +127,18 @@ def _verify(path: Path, expected_size: int, expected_sha256: str) -> None:
         raise RuntimeError(f"Checksum mismatch for {path}")
 
 
+def _verify_files(directory: Path, files: dict[str, tuple[int, str]]) -> None:
+    for filename, expected in files.items():
+        _verify(directory / filename, *expected)
+
+
+def _integrity(files: dict[str, tuple[int, str]]) -> dict[str, dict[str, int | str]]:
+    return {
+        filename: {"size": size, "sha256": digest}
+        for filename, (size, digest) in files.items()
+    }
+
+
 def _pin_main_ref(cache: Path, repo_id: str, revision: str) -> None:
     """Resolve a hard-coded upstream ``from_pretrained(repo_id)`` call offline."""
     refs = cache / f"models--{repo_id.replace('/', '--')}" / "refs"
@@ -125,12 +161,15 @@ def download_clap(root: Path) -> None:
     )
     _verify(checkpoint, _CLAP_SIZE, _CLAP_SHA256)
     print(f"Downloading nested {_ROBERTA_REPO}@{_ROBERTA_REVISION}")
-    snapshot_download(
-        repo_id=_ROBERTA_REPO,
-        revision=_ROBERTA_REVISION,
-        cache_dir=cache,
-        allow_patterns=_TRANSFORMER_PATTERNS,
+    roberta_snapshot = Path(
+        snapshot_download(
+            repo_id=_ROBERTA_REPO,
+            revision=_ROBERTA_REVISION,
+            cache_dir=cache,
+            allow_patterns=_TRANSFORMER_PATTERNS,
+        )
     )
+    _verify_files(roberta_snapshot, _ROBERTA_FILES)
     _pin_main_ref(cache, _ROBERTA_REPO, _ROBERTA_REVISION)
     print(f"Downloading import-time {_BERT_REPO}@{_BERT_REVISION}")
     snapshot_download(
@@ -152,9 +191,18 @@ def download_clap(root: Path) -> None:
         destination,
         {
             "backend": "local-clap",
-            "checkpoint": {"repo": _CLAP_REPO, "revision": _CLAP_REVISION, "file": _CLAP_FILENAME},
+            "checkpoint": {
+                "repo": _CLAP_REPO,
+                "revision": _CLAP_REVISION,
+                "file": _CLAP_FILENAME,
+                "integrity": {"size": _CLAP_SIZE, "sha256": _CLAP_SHA256},
+            },
             "nested_models": [
-                {"repo": _ROBERTA_REPO, "revision": _ROBERTA_REVISION},
+                {
+                    "repo": _ROBERTA_REPO,
+                    "revision": _ROBERTA_REVISION,
+                    "verified_files": _integrity(_ROBERTA_FILES),
+                },
                 {"repo": _BERT_REPO, "revision": _BERT_REVISION},
                 {"repo": _BART_REPO, "revision": _BART_REVISION},
             ],
@@ -184,29 +232,47 @@ def download_muq_mulan(root: Path, *, accept_restricted_weights: bool) -> None:
         )
         _verify(downloaded, *_MUQ_FILES[filename])
     print(f"Downloading nested {_MUQ_AUDIO_REPO}@{_MUQ_AUDIO_REVISION}")
-    snapshot_download(
-        repo_id=_MUQ_AUDIO_REPO,
-        revision=_MUQ_AUDIO_REVISION,
-        cache_dir=cache,
-        allow_patterns=["config.json", "model.safetensors"],
+    muq_audio_snapshot = Path(
+        snapshot_download(
+            repo_id=_MUQ_AUDIO_REPO,
+            revision=_MUQ_AUDIO_REVISION,
+            cache_dir=cache,
+            allow_patterns=["config.json", "model.safetensors"],
+        )
     )
+    _verify_files(muq_audio_snapshot, _MUQ_AUDIO_FILES)
     _pin_main_ref(cache, _MUQ_AUDIO_REPO, _MUQ_AUDIO_REVISION)
     print(f"Downloading nested {_XLM_ROBERTA_REPO}@{_XLM_ROBERTA_REVISION}")
-    snapshot_download(
-        repo_id=_XLM_ROBERTA_REPO,
-        revision=_XLM_ROBERTA_REVISION,
-        cache_dir=cache,
-        allow_patterns=_TRANSFORMER_PATTERNS,
+    xlm_roberta_snapshot = Path(
+        snapshot_download(
+            repo_id=_XLM_ROBERTA_REPO,
+            revision=_XLM_ROBERTA_REVISION,
+            cache_dir=cache,
+            allow_patterns=_TRANSFORMER_PATTERNS,
+        )
     )
+    _verify_files(xlm_roberta_snapshot, _XLM_ROBERTA_FILES)
     _pin_main_ref(cache, _XLM_ROBERTA_REPO, _XLM_ROBERTA_REVISION)
     _manifest(
         destination,
         {
             "backend": "local-muq-mulan",
-            "checkpoint": {"repo": _MUQ_MULAN_REPO, "revision": _MUQ_MULAN_REVISION},
+            "checkpoint": {
+                "repo": _MUQ_MULAN_REPO,
+                "revision": _MUQ_MULAN_REVISION,
+                "verified_files": _integrity(_MUQ_FILES),
+            },
             "nested_models": [
-                {"repo": _MUQ_AUDIO_REPO, "revision": _MUQ_AUDIO_REVISION},
-                {"repo": _XLM_ROBERTA_REPO, "revision": _XLM_ROBERTA_REVISION},
+                {
+                    "repo": _MUQ_AUDIO_REPO,
+                    "revision": _MUQ_AUDIO_REVISION,
+                    "verified_files": _integrity(_MUQ_AUDIO_FILES),
+                },
+                {
+                    "repo": _XLM_ROBERTA_REPO,
+                    "revision": _XLM_ROBERTA_REVISION,
+                    "verified_files": _integrity(_XLM_ROBERTA_FILES),
+                },
             ],
             "weights_license": "CC-BY-NC-4.0",
         },
@@ -243,13 +309,16 @@ def download_mert(
             "pytorch_model.bin",
         ],
     )
-    for filename, expected in _MERT_FILES.items():
-        _verify(destination / filename, *expected)
+    _verify_files(destination, _MERT_FILES)
     _manifest(
         destination,
         {
             "backend": "local-mert",
-            "checkpoint": {"repo": _MERT_REPO, "revision": _MERT_REVISION},
+            "checkpoint": {
+                "repo": _MERT_REPO,
+                "revision": _MERT_REVISION,
+                "verified_files": _integrity(_MERT_FILES),
+            },
             "trusted_remote_code": True,
             "weights_license": "CC-BY-NC-4.0",
         },
