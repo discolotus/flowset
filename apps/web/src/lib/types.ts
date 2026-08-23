@@ -90,6 +90,8 @@ export interface SemanticBackendCapabilities {
   capabilities: ReadonlyArray<"text_similarity" | "reference_similarity" | "embedding_extraction">;
   license_note?: string | null;
   embedding_dimension?: number | null;
+  embedding_representation?: string | null;
+  max_embedding_batch: number;
 }
 export interface SemanticRankResponse {
   backend: SemanticBackendCapabilities;
@@ -97,6 +99,30 @@ export interface SemanticRankResponse {
   score_keys_by_normalized_label: Record<string, string>;
   results: Array<{ track_id: string; status: "complete" | "unavailable" | "failed"; scores: SemanticScore[]; error?: string | null }>;
   missing_track_ids: string[];
+}
+export type SemanticEmbeddingCacheStatus = "hit" | "miss" | "deduplicated";
+export interface SemanticEmbeddingResult {
+  track_id: string;
+  status: "complete" | "unavailable" | "failed";
+  values: number[];
+  cache_status?: SemanticEmbeddingCacheStatus | null;
+  error?: string | null;
+}
+export interface SemanticEmbeddingCacheMetadata {
+  hits: number;
+  misses: number;
+  deduplicated: number;
+  evictions: number;
+  entries: number;
+  capacity: number;
+}
+export interface SemanticEmbeddingResponse {
+  backend: SemanticBackendCapabilities;
+  representation: string;
+  dimension: number | null;
+  embeddings: SemanticEmbeddingResult[];
+  failed_track_ids: string[];
+  cache: SemanticEmbeddingCacheMetadata;
 }
 
 export interface AudioFeatureResolutionResponse {

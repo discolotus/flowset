@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { SemanticExperimentRunV1 } from "../lib/semantic/types";
 import { SemanticScoreMatrix } from "./SemanticScoreMatrix";
 
-const backend = { id: "local-clap", display_name: "Local CLAP", model: "clap-v1", available: true, requires_local_audio: true, max_tracks: 20, max_labels: 20, capabilities: ["text_similarity"] } as const;
+const backend = { id: "local-clap", display_name: "Local CLAP", model: "clap-v1", available: true, requires_local_audio: true, max_tracks: 20, max_labels: 20, max_embedding_batch: 20, capabilities: ["text_similarity"] } as const;
 const focusKey = "semantic:focus";
 const warmKey = "semantic:warm";
 const score = (key: string, label: string, value: number) => ({ key, label, normalized_label: label, score: value, provenance: { backend: "local-clap", model: "clap-v1" } });

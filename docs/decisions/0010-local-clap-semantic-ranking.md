@@ -17,6 +17,12 @@ Users want both open-ended text-to-music ranking and musically useful similarity
 - Each score carries backend/model provenance. Missing results remain explicit and tracks remain inspectable.
 - A selected semantic score can drive distribution, split, subgroup, and scoped sort.
 - Capability metadata distinguishes `text_similarity`, `reference_similarity`, and `embedding_extraction`. Extraction is a separate bounded response and embeddings are never added to normal `Track` export objects.
+- Embedding-capable backends publish a stable representation identity alongside model revision and
+  dimension metadata. Clients must reject mixed spaces before comparison.
+- Raw embeddings may be retained only in a bounded process-local LRU keyed by backend, model,
+  representation, authorized root-relative audio identity, size, and modification time. Concurrent
+  identical requests share one inference. Cache hit/miss/deduplication and per-track failures are
+  explicit; embeddings never enter workspace/browser persistence, normal tracks, or exports.
 
 ## Setup
 

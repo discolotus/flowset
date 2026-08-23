@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0-preview.9] - 2026-08-22
+
+- Add bounded, model- and representation-aware in-memory embedding reuse with visible per-track
+  cache and failure diagnostics.
+- Add typed, chunked frontend embedding acquisition that rejects incompatible model spaces while
+  keeping raw vectors out of persisted workspace and track data.
+
 ## [0.2.0-preview.8] - 2026-08-22
 
 - Add a bounded multi-prompt composer and accessible track-by-prompt Semantic Lab score matrix.

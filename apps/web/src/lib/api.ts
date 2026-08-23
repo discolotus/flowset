@@ -20,6 +20,7 @@ import type {
   SpotifyPlaylistCreateResponse,
   Track,
   SemanticBackendCapabilities,
+  SemanticEmbeddingResponse,
   SemanticRankResponse,
 } from "./types";
 import type { SplitFactor } from "./factorGrid";
@@ -203,6 +204,74 @@ export function rankSemanticReference(input: {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ backend_id: input.backendId, reference_track_id: input.referenceTrackId, audio_paths: input.audioPaths }),
   });
+}
+
+export async function extractSemanticEmbeddings(input: {
+  backend: SemanticBackendCapabilities;
+  audioPaths: Record<string, string>;
+  signal?: AbortSignal;
+}): Promise<SemanticEmbeddingResponse> {
+  if (!input.backend.capabilities.includes("embedding_extraction")) {
+    throw new Error("The selected backend does not expose embeddings.");
+  }
+  const entries = Object.entries(input.audioPaths);
+  if (entries.length === 0) {
+    throw new Error("Select at least one authorized track for embedding extraction.");
+  }
+  const chunkSize = input.backend.max_embedding_batch;
+  if (!Number.isInteger(chunkSize) || chunkSize < 1 || chunkSize > 20) {
+    throw new Error("The backend reported an invalid embedding batch limit.");
+  }
+
+  let aggregate: SemanticEmbeddingResponse | null = null;
+  for (let offset = 0; offset < entries.length; offset += chunkSize) {
+    const response = await request<SemanticEmbeddingResponse>("/api/v1/semantic/embeddings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        backend_id: input.backend.id,
+        audio_paths: Object.fromEntries(entries.slice(offset, offset + chunkSize)),
+      }),
+      signal: input.signal,
+    });
+    if (response.backend.id !== input.backend.id) {
+      throw new Error("Embedding response came from an unexpected backend.");
+    }
+    if (!aggregate) {
+      aggregate = {
+        ...response,
+        embeddings: [...response.embeddings],
+        failed_track_ids: [...response.failed_track_ids],
+        cache: { ...response.cache },
+      };
+      continue;
+    }
+    const incompatible = response.backend.model !== aggregate.backend.model
+      || response.representation !== aggregate.representation
+      || (response.dimension != null
+        && aggregate.dimension != null
+        && response.dimension !== aggregate.dimension);
+    if (incompatible) {
+      throw new Error("Embedding chunks came from incompatible model spaces.");
+    }
+    aggregate.dimension ??= response.dimension;
+    aggregate.backend = {
+      ...aggregate.backend,
+      embedding_dimension: aggregate.dimension,
+    };
+    aggregate.embeddings.push(...response.embeddings);
+    aggregate.failed_track_ids.push(...response.failed_track_ids);
+    aggregate.cache = {
+      hits: aggregate.cache.hits + response.cache.hits,
+      misses: aggregate.cache.misses + response.cache.misses,
+      deduplicated: aggregate.cache.deduplicated + response.cache.deduplicated,
+      evictions: aggregate.cache.evictions + response.cache.evictions,
+      entries: response.cache.entries,
+      capacity: response.cache.capacity,
+    };
+  }
+  if (!aggregate) throw new Error("Embedding extraction returned no chunks.");
+  return aggregate;
 }
 
 export function getSpotifyStatus(): Promise<SpotifyConnectionStatus> {

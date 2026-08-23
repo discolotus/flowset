@@ -37,6 +37,7 @@ AnalysisTrackStatus = Literal["pending", "running", "complete", "error", "unavai
 AnalysisStageState = Literal["pending", "active", "complete", "skipped", "error"]
 SemanticResultStatus = Literal["complete", "unavailable", "failed"]
 SemanticCapability = Literal["text_similarity", "reference_similarity", "embedding_extraction"]
+SemanticEmbeddingCacheStatus = Literal["hit", "miss", "deduplicated"]
 
 NumericParameter = Literal[
     "energy",
@@ -493,6 +494,8 @@ class SemanticBackendCapabilities(BaseModel):
     capabilities: list[SemanticCapability] = Field(default_factory=lambda: ["text_similarity"])
     license_note: str | None = None
     embedding_dimension: int | None = Field(default=None, ge=1, le=65536)
+    embedding_representation: str | None = Field(default=None, min_length=1, max_length=200)
+    max_embedding_batch: int = Field(default=20, ge=1, le=20)
 
 
 class SemanticRankedScore(BaseModel):
@@ -531,13 +534,28 @@ class SemanticEmbeddingRequest(BaseModel):
 
 class SemanticEmbedding(BaseModel):
     track_id: str
-    values: list[float] = Field(max_length=8192)
+    status: SemanticResultStatus
+    values: list[float] = Field(default_factory=list, max_length=8192)
+    cache_status: SemanticEmbeddingCacheStatus | None = None
+    error: str | None = None
+
+
+class SemanticEmbeddingCacheMetadata(BaseModel):
+    hits: int = Field(default=0, ge=0)
+    misses: int = Field(default=0, ge=0)
+    deduplicated: int = Field(default=0, ge=0)
+    evictions: int = Field(default=0, ge=0)
+    entries: int = Field(ge=0)
+    capacity: int = Field(ge=1)
 
 
 class SemanticEmbeddingResponse(BaseModel):
     backend: SemanticBackendCapabilities
-    dimension: int = Field(ge=1, le=8192)
+    representation: str = Field(min_length=1, max_length=200)
+    dimension: int | None = Field(default=None, ge=1, le=8192)
     embeddings: list[SemanticEmbedding] = Field(max_length=20)
+    failed_track_ids: list[str] = Field(default_factory=list, max_length=20)
+    cache: SemanticEmbeddingCacheMetadata
 
 
 class AnalysisProgressStageSnapshot(BaseModel):

@@ -6,6 +6,7 @@ import {
   configureSpotify,
   createSpotifyPlaylists,
   discoverLocalPlaylists,
+  extractSemanticEmbeddings,
   getAudioFeatureProgress,
   getAudioFeatureProviders,
   getSpotifyStatus,
@@ -251,6 +252,86 @@ describe("semantic ranking API", () => {
       labels: ["hypnotic sunrise", "warm analog glow"],
       audio_paths: { "track-one": "Sets/track-one.wav" },
     });
+  });
+});
+
+describe("semantic embedding acquisition", () => {
+  const backend = {
+    id: "local-muq-mulan",
+    display_name: "Local MuQ-MuLan",
+    model: "muq-local-v1",
+    available: true,
+    requires_local_audio: true,
+    max_tracks: 100,
+    max_labels: 20,
+    max_embedding_batch: 2,
+    capabilities: ["text_similarity", "embedding_extraction"] as const,
+    embedding_representation: "muq-mean-v1",
+  };
+
+  it("acquires bounded chunks and preserves visible cache and failure metadata", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { audio_paths: Record<string, string> };
+      const ids = Object.keys(body.audio_paths);
+      const failed = ids.filter((id) => id === "track-3");
+      return {
+        ok: true,
+        json: async () => ({
+          backend: { ...backend, embedding_dimension: 2 },
+          representation: "muq-mean-v1",
+          dimension: 2,
+          embeddings: ids.map((trackId) => trackId === "track-3"
+            ? { track_id: trackId, status: "failed", values: [], cache_status: null, error: "Could not extract." }
+            : { track_id: trackId, status: "complete", values: [1, 0], cache_status: "miss", error: null }),
+          failed_track_ids: failed,
+          cache: { hits: 0, misses: ids.length - failed.length, deduplicated: 0, evictions: 0, entries: ids.length, capacity: 128 },
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await extractSemanticEmbeddings({
+      backend,
+      audioPaths: {
+        "track-1": "set/one.wav",
+        "track-2": "set/two.wav",
+        "track-3": "set/three.wav",
+        "track-4": "set/four.wav",
+        "track-5": "set/five.wav",
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls.map(([, options]) =>
+      Object.keys(JSON.parse(String(options?.body)).audio_paths).length)).toEqual([2, 2, 1]);
+    expect(response.embeddings.map(({ track_id }) => track_id)).toEqual([
+      "track-1", "track-2", "track-3", "track-4", "track-5",
+    ]);
+    expect(response.failed_track_ids).toEqual(["track-3"]);
+    expect(response.cache).toMatchObject({ misses: 4, hits: 0, entries: 1, capacity: 128 });
+  });
+
+  it("rejects mixed model revisions before consumers can compare the vectors", async () => {
+    let call = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      call += 1;
+      return {
+        ok: true,
+        json: async () => ({
+          backend: { ...backend, model: call === 1 ? "muq-local-v1" : "muq-local-v2", embedding_dimension: 2 },
+          representation: "muq-mean-v1",
+          dimension: 2,
+          embeddings: [{ track_id: `track-${call}`, status: "complete", values: [1, 0], cache_status: "miss" }],
+          failed_track_ids: [],
+          cache: { hits: 0, misses: 1, deduplicated: 0, evictions: 0, entries: call, capacity: 128 },
+        }),
+      };
+    }));
+
+    await expect(extractSemanticEmbeddings({
+      backend,
+      audioPaths: { "track-1": "one.wav", "track-2": "two.wav", "track-3": "three.wav" },
+    })).rejects.toThrow("incompatible model spaces");
   });
 });
 
