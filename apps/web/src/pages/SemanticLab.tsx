@@ -5,6 +5,7 @@ import { SemanticPromptComposer, SEMANTIC_PROMPT_EXAMPLES, type SemanticPromptRo
 import { SemanticContrastControl } from "../components/SemanticContrastControl";
 import { SemanticEmbeddingExplorer } from "../components/SemanticEmbeddingExplorer";
 import { SemanticPromptDiagnostics } from "../components/SemanticPromptDiagnostics";
+import { SemanticRunComparison } from "../components/SemanticRunComparison";
 import { SemanticScoreMatrix } from "../components/SemanticScoreMatrix";
 import { getSemanticCapabilities, localAudioPreviewUrl, rankSemanticAudio, rankSemanticReference } from "../lib/api";
 import { deriveSemanticContrast } from "../lib/semantic/contrast";
@@ -294,5 +295,6 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
       {!hasPromotableScores && <p role="alert" className="mt-3 text-amber-200">The selected score produced no usable values to promote.</p>}
       <button type="button" className="primary-button mt-3" onClick={promote} disabled={staleSource || !hasPromotableScores || !Object.values(scopes).some(Boolean)}>Promote selected score to recipe</button></div>
     </section>}
+    <SemanticRunComparison runs={runs} audioPaths={audioPaths} onPromote={onPromote} />
   </div>;
 }
