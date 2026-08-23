@@ -27,6 +27,8 @@ export interface SemanticExperimentRunV1 {
   readonly kind: "text-ranking";
   readonly status: "complete" | "partial" | "failed";
   readonly backend: SemanticBackendCapabilities;
+  readonly prompts: readonly string[];
+  readonly scoreKeysByNormalizedLabel: Readonly<Record<string, string>>;
   readonly query: string;
   readonly scoreKey: string;
   readonly trackIds: readonly string[];

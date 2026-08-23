@@ -513,6 +513,7 @@ class SemanticTrackResult(BaseModel):
 class SemanticRankResponse(BaseModel):
     backend: SemanticBackendCapabilities
     score_key: str
+    score_keys_by_normalized_label: dict[str, str]
     results: list[SemanticTrackResult]
     missing_track_ids: list[str] = Field(default_factory=list)
 
