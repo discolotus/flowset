@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ReferenceTrackPicker } from "../components/ReferenceTrackPicker";
 import { SemanticPromptComposer, SEMANTIC_PROMPT_EXAMPLES, type SemanticPromptRow } from "../components/SemanticPromptComposer";
 import { SemanticContrastControl } from "../components/SemanticContrastControl";
+import { SemanticEmbeddingExplorer } from "../components/SemanticEmbeddingExplorer";
 import { SemanticPromptDiagnostics } from "../components/SemanticPromptDiagnostics";
 import { SemanticScoreMatrix } from "../components/SemanticScoreMatrix";
 import { getSemanticCapabilities, localAudioPreviewUrl, rankSemanticAudio, rankSemanticReference } from "../lib/api";
@@ -258,6 +259,8 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
       <button type="button" className="primary-button mt-4" disabled={busy || !referenceBackend?.available || !referenceBackend.default_representation || !referenceTrackId || !selectedTracks.length || referenceOversized} onClick={runReferenceExperiment}>{busy ? "Running…" : "Inspect nearest neighbors"}</button>
       <p role="status" className="mt-3 text-xs text-mist/60">{referenceStatus}</p>
     </section>
+
+    <SemanticEmbeddingExplorer tracks={selectedTracks} audioPaths={audioPaths} backends={backends} />
 
     {activeRun && <section aria-labelledby="results-heading">
       <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="eyebrow">Recent run</p><h2 id="results-heading" className="font-display text-xl font-semibold">{activeRun.kind === "reference-ranking" ? activeRun.query : activeRun.prompts.join(" · ")}</h2><p className="text-xs text-mist/60">{activeRun.backend.display_name} · revision {activeRun.backend.model} · {activeRun.status} · {activeRun.durationMs} ms</p><p className="mt-1 font-mono text-[10px] text-mist/45">{availableCellCount}/{totalCellCount} score cells available · {totalCellCount - availableCellCount} missing · {activeRun.trackSetFingerprint}</p></div>
