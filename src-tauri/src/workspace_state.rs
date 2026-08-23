@@ -29,10 +29,11 @@ fn state_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 fn read_workspace_state_file(path: &Path) -> Result<Value, String> {
     if !path.exists() {
         return Ok(json!({
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "savedRecipes": [],
             "recentLibraryRoots": [],
-            "lastMp3Export": null
+            "lastMp3Export": null,
+            "semanticRuns": []
         }));
     }
     let metadata = fs::symlink_metadata(path)
@@ -47,15 +48,69 @@ fn read_workspace_state_file(path: &Path) -> Result<Value, String> {
         .map_err(|error| format!("Could not read saved workspace history: {error}"))?;
     let state: Value = serde_json::from_str(&contents)
         .map_err(|error| format!("Saved workspace history is not valid JSON: {error}"))?;
-    if !state.is_object() {
-        return Err("Saved workspace history must contain a JSON object.".to_owned());
+    normalize_workspace_state(state)
+}
+
+fn normalize_workspace_state(mut state: Value) -> Result<Value, String> {
+    let object = state
+        .as_object_mut()
+        .ok_or_else(|| "Saved workspace history must contain a JSON object.".to_owned())?;
+    match object.get("schemaVersion").and_then(Value::as_u64) {
+        Some(1) => {
+            object.insert("schemaVersion".to_owned(), json!(2));
+            object.insert("semanticRuns".to_owned(), json!([]));
+        }
+        Some(2) => {}
+        _ => return Err("Workspace history must use schema version 1 or 2.".to_owned()),
     }
     Ok(state)
 }
 
+fn contains_forbidden_persistence_key(value: &Value) -> bool {
+    const FORBIDDEN_KEYS: &[&str] = &[
+        "embedding",
+        "embeddings",
+        "audio_path",
+        "audio_paths",
+        "audiopath",
+        "audiopaths",
+        "audio_blob",
+        "audio_blobs",
+        "audioblob",
+        "audioblobs",
+        "raw_audio",
+        "rawaudio",
+        "raw_audio_path",
+        "rawaudiopath",
+        "provider_secret",
+        "provider_secrets",
+        "providersecret",
+        "providersecrets",
+        "client_secret",
+        "clientsecret",
+        "access_token",
+        "accesstoken",
+        "refresh_token",
+        "refreshtoken",
+    ];
+    match value {
+        Value::Object(object) => object.iter().any(|(key, nested)| {
+            FORBIDDEN_KEYS.contains(&key.to_ascii_lowercase().as_str())
+                || contains_forbidden_persistence_key(nested)
+        }),
+        Value::Array(items) => items.iter().any(contains_forbidden_persistence_key),
+        _ => false,
+    }
+}
+
 fn write_workspace_state_file(path: &Path, state: &Value) -> Result<(), String> {
-    if !state.is_object() || state.get("schemaVersion").and_then(Value::as_u64) != Some(1) {
-        return Err("Workspace history must use schema version 1.".to_owned());
+    if !state.is_object() || state.get("schemaVersion").and_then(Value::as_u64) != Some(2) {
+        return Err("Workspace history must use schema version 2.".to_owned());
+    }
+    if contains_forbidden_persistence_key(state) {
+        return Err(
+            "Workspace history contains a forbidden sensitive or high-volume field.".to_owned(),
+        );
     }
     let contents = serde_json::to_vec_pretty(state)
         .map_err(|error| format!("Could not serialize workspace history: {error}"))?;
@@ -137,10 +192,11 @@ mod tests {
     fn persists_readable_workspace_history_atomically() {
         let path = temporary_state_path();
         let state = json!({
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "savedRecipes": [{"id": "recipe-1", "name": "Night Drive"}],
             "recentLibraryRoots": ["/Music"],
-            "lastMp3Export": null
+            "lastMp3Export": null,
+            "semanticRuns": []
         });
 
         write_workspace_state_file(&path, &state).expect("state should save");
@@ -153,11 +209,50 @@ mod tests {
     }
 
     #[test]
+    fn migrates_workspace_state_v1_on_read() {
+        let path = temporary_state_path();
+        fs::create_dir_all(path.parent().expect("state parent")).expect("fixture should exist");
+        fs::write(
+            &path,
+            serde_json::to_vec(&json!({
+                "schemaVersion": 1,
+                "savedRecipes": [{"id": "recipe-1", "name": "Night Drive"}],
+                "recentLibraryRoots": ["/Music"],
+                "lastMp3Export": null
+            }))
+            .expect("fixture should serialize"),
+        )
+        .expect("fixture should write");
+
+        let migrated = read_workspace_state_file(&path).expect("v1 state should migrate");
+        assert_eq!(migrated["schemaVersion"], 2);
+        assert_eq!(migrated["savedRecipes"][0]["id"], "recipe-1");
+        assert_eq!(migrated["semanticRuns"], json!([]));
+
+        fs::remove_dir_all(path.parent().expect("state parent")).expect("fixture should clean up");
+    }
+
+    #[test]
     fn rejects_unknown_workspace_state_versions() {
         let path = temporary_state_path();
-        let error = write_workspace_state_file(&path, &json!({"schemaVersion": 2}))
+        let error = write_workspace_state_file(&path, &json!({"schemaVersion": 3}))
             .expect_err("unknown version should fail");
-        assert!(error.contains("schema version 1"));
+        assert!(error.contains("schema version 2"));
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn rejects_forbidden_semantic_payloads() {
+        let path = temporary_state_path();
+        for forbidden in [
+            json!({"schemaVersion": 2, "semanticRuns": [{"embeddings": [[0.1, 0.2]]}]}),
+            json!({"schemaVersion": 2, "semanticRuns": [{"audioPaths": {"track": "/Music/secret.mp3"}}]}),
+            json!({"schemaVersion": 2, "semanticRuns": [{"providerSecret": "secret"}]}),
+        ] {
+            let error = write_workspace_state_file(&path, &forbidden)
+                .expect_err("forbidden payload should fail");
+            assert!(error.contains("forbidden"));
+            assert!(!path.exists());
+        }
     }
 }
