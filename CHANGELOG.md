@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0-preview.12] - 2026-08-22
+
+- Add a bounded cached-embedding explorer with deterministic cosine neighbors, PCA coordinates,
+  and normalized-vector clusters.
+- Keep model provenance, algorithm configuration, cache coverage, and failed tracks visible while
+  ensuring exploratory clusters never mutate recipes or become playlist splits.
+
 ## [0.2.0-preview.11] - 2026-08-22
 
 - Add per-score coverage, range, histogram, and low-separation diagnostics to Semantic Lab.
