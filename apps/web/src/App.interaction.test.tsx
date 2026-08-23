@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DemoPlaylist, RecipePreviewResponse, Track } from "./lib/types";
+import { WORKSPACE_STATE_STORAGE_KEY } from "./lib/workspaceState";
 
 vi.mock("./components/DistributionChart", () => ({
   DistributionChart: ({ distribution }: { distribution: { parameter: string } }) => (
@@ -195,6 +196,7 @@ beforeEach(() => {
       requires_local_audio: true,
       max_tracks: 20,
       max_labels: 1,
+      max_embedding_batch: 20,
       capabilities: ["text_similarity"],
       detail: "Runs on loopback over authorized paths.",
     }]);
@@ -207,6 +209,7 @@ beforeEach(() => {
         requires_local_audio: true,
         max_tracks: 20,
         max_labels: 1,
+        max_embedding_batch: 20,
         capabilities: ["text_similarity"],
       },
       score_key: "semantic:local-clap:clap-v1:focus",
@@ -288,12 +291,53 @@ async function openFixtureWorkspace(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByRole("heading", { name: /1 basis playlist/ }, { timeout: 2_000 });
 }
 
+function persistedSemanticRun(id: string, query: string, createdAt: string) {
+  const scoreKey = `semantic:local-clap:clap-v1:${query}`;
+  return {
+    schemaVersion: 1,
+    id,
+    createdAt,
+    completedAt: createdAt,
+    durationMs: 0,
+    kind: "text-ranking",
+    status: "complete",
+    backend: {
+      id: "local-clap",
+      display_name: "Local CLAP",
+      model: "clap-v1",
+      available: true,
+      requires_local_audio: true,
+      max_tracks: 20,
+      max_labels: 3,
+      max_embedding_batch: 20,
+      capabilities: ["text_similarity"],
+    },
+    prompts: [query],
+    scoreKeysByNormalizedLabel: { [query]: scoreKey },
+    query,
+    scoreKey,
+    trackIds: [localTrack.id],
+    trackSetFingerprint: "fnv1a32:run-source",
+    sourceTrackSetFingerprint: "fnv1a32:workspace-source",
+    trackSnapshots: [{ trackId: localTrack.id, name: localTrack.name, artist: localTrack.artist, album: localTrack.album, durationMs: localTrack.duration_ms }],
+    results: [{ trackId: localTrack.id, status: "complete", scores: [{ key: scoreKey, label: query, normalized_label: query, score: 0.75, provenance: { backend: "local-clap", model: "clap-v1" } }] }],
+    missingTrackIds: [],
+    warnings: [],
+  };
+}
+
 describe("App behavior", () => {
-  it("switches workspaces without unmounting Builder state", async () => {
+  it("preserves selected playlists and a customized recipe across Builder → Lab → Builder", async () => {
     const user = userEvent.setup();
     render(<App />);
     await openFixtureWorkspace(user);
     expect(screen.getByLabelText("Combined source summary").textContent).toContain("2 sources");
+    const recipeName = screen.getByRole("textbox", { name: "Output name" }) as HTMLInputElement;
+    await user.click(screen.getByText("Advanced"));
+    const histogramBins = screen.getByLabelText("Histogram bins") as HTMLSelectElement;
+    await user.clear(recipeName);
+    await user.type(recipeName, "Customized Audit Recipe");
+    await user.selectOptions(histogramBins, "12");
 
     await user.click(screen.getByRole("button", { name: "Semantic Lab" }));
     expect(await screen.findByRole("heading", { name: "Explore locally. Promote deliberately." })).not.toBeNull();
@@ -301,7 +345,38 @@ describe("App behavior", () => {
 
     await user.click(screen.getByRole("button", { name: "Playlist Builder" }));
     expect(screen.getByLabelText("Combined source summary").textContent).toContain("2 sources");
-    expect(screen.getByText("Night Drive Levels — Fixture basis")).not.toBeNull();
+    expect((screen.getByRole("textbox", { name: "Output name" }) as HTMLInputElement).value).toBe("Customized Audit Recipe");
+    await user.click(screen.getByText("Advanced"));
+    expect((screen.getByLabelText("Histogram bins") as HTMLSelectElement).value).toBe("12");
+  });
+
+  it("hydrates bounded recent Semantic Lab history and selects an older run", async () => {
+    const user = userEvent.setup();
+    storageValues.set(WORKSPACE_STATE_STORAGE_KEY, JSON.stringify({
+      schemaVersion: 2,
+      savedRecipes: [],
+      recentLibraryRoots: [],
+      lastMp3Export: null,
+      semanticRuns: [
+        persistedSemanticRun("newer-run", "newer focus", "2026-08-22T11:00:00.000Z"),
+        persistedSemanticRun("older-run", "older warmth", "2026-08-22T10:00:00.000Z"),
+      ],
+    }));
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Semantic Lab" }));
+    expect(await screen.findByRole("heading", { name: "newer focus", level: 2 })).not.toBeNull();
+    await user.selectOptions(screen.getByLabelText("Recent experiment run"), "older-run");
+    expect(await screen.findByRole("heading", { name: "older warmth", level: 2 })).not.toBeNull();
+    const persistedSourceRuns = storageValues.get(WORKSPACE_STATE_STORAGE_KEY);
+    const comparisonSection = screen.getByRole("heading", { name: "Pin two scalar runs" }).closest("section");
+    expect(comparisonSection).not.toBeNull();
+    await user.selectOptions(screen.getByLabelText("Pinned left run"), "older-run");
+    expect(within(comparisonSection!).getByRole("alert").textContent).toContain("two different completed runs");
+    await user.selectOptions(screen.getByLabelText("Pinned left run"), "newer-run");
+    await user.click(screen.getByRole("radio", { name: "Right" }));
+    await user.click(screen.getByRole("button", { name: "Promote selected winner" }));
+    expect(storageValues.get(WORKSPACE_STATE_STORAGE_KEY)).toBe(persistedSourceRuns);
   });
 
   it("discovers, imports, selects, and readies a playlist-file source", async () => {
@@ -352,6 +427,10 @@ describe("App behavior", () => {
     await screen.findByText(/Recipe unchanged/);
     expect(previewRequests).toHaveLength(previewsBeforeRun);
     expect(previewRequests.at(-1)).not.toHaveProperty("distribution_semantic_score_key");
+    const persistedWorkspace = JSON.parse(storageValues.get(WORKSPACE_STATE_STORAGE_KEY) ?? "null");
+    expect(persistedWorkspace.schemaVersion).toBe(2);
+    expect(persistedWorkspace.semanticRuns[0]).toMatchObject({ query: "focus", trackSnapshots: [{ name: "Local Main Track" }] });
+    expect(JSON.stringify(persistedWorkspace.semanticRuns[0])).not.toContain("Audio/House/Local Main Track.mp3");
 
     await user.click(screen.getByRole("button", { name: "Promote selected score to recipe" }));
     await waitFor(() => expect(previewRequests.at(-1)).toHaveProperty(

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0-preview.14] - 2026-08-22
+
+- Migrate browser and native workspace history to a bounded schema v2 that restores recent
+  Semantic Lab scalar runs without storing embeddings, audio material, paths, or secrets.
+- Keep playlist selection and customized recipe state intact while moving between Builder and Lab,
+  and allow older persisted runs to be selected for inspection.
+
 ## [0.2.0-preview.13] - 2026-08-22
 
 - Compare two completed scalar Semantic Lab runs without rerunning inference, with deterministic

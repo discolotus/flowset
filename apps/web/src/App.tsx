@@ -99,6 +99,7 @@ import { LatestRequestGuard } from "./lib/latestRequest";
 import {
   forgetRecipe,
   loadWorkspaceState,
+  normalizeWorkspaceState,
   readBrowserWorkspaceState,
   rememberLibraryRoot,
   renameRecipe,
@@ -349,8 +350,9 @@ export default function App() {
   })();
   const [sourceMode, setSourceMode] = useState<"local" | "demo">("local");
   const [workspaceMode, setWorkspaceMode] = useState<"builder" | "semantic-lab">("builder");
-  // Deliberately session-only until workspace-state v2 can migrate native and browser storage together.
-  const [semanticRuns, setSemanticRuns] = useState<readonly SemanticExperimentRunV1[]>([]);
+  const [semanticRuns, setSemanticRuns] = useState<readonly SemanticExperimentRunV1[]>(() =>
+    readBrowserWorkspaceState(localStorage).semanticRuns,
+  );
   const [demoPlaylists, setDemoPlaylists] = useState<InputPlaylist[]>([]);
   const [localPlaylists, setLocalPlaylists] = useState<InputPlaylist[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -432,6 +434,7 @@ export default function App() {
         if (stale) return;
         workspaceStateRef.current = loaded.state;
         setWorkspaceState(loaded.state);
+        setSemanticRuns(loaded.state.semanticRuns);
         setWorkspaceStatePath(loaded.path);
       });
     return () => {
@@ -452,6 +455,15 @@ export default function App() {
           reason instanceof Error ? reason.message : "Could not save local app history.",
         );
       });
+  };
+
+  const changeSemanticRuns = (runs: readonly SemanticExperimentRunV1[]) => {
+    const next = normalizeWorkspaceState({
+      ...workspaceStateRef.current,
+      semanticRuns: runs,
+    });
+    setSemanticRuns(next.semanticRuns);
+    persistWorkspace(next);
   };
 
   useEffect(() => {
@@ -1446,7 +1458,7 @@ export default function App() {
             tracks={uniqueTracks}
             audioPaths={selectedAudioPaths}
             runs={semanticRuns}
-            onRunsChange={setSemanticRuns}
+            onRunsChange={changeSemanticRuns}
             onPromote={promoteSemanticRun}
           />
         ) : <>

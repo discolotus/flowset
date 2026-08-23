@@ -206,7 +206,7 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
     <section>
       <p className="eyebrow">Semantic Lab</p>
       <h1 className="mt-3 font-display text-4xl font-semibold">Explore locally. Promote deliberately.</h1>
-      <p className="mt-3 max-w-3xl text-sm text-mist/65">Experiments use only authorized local tracks and cannot change the playlist recipe until you promote a score. Recent runs are bounded to this session.</p>
+      <p className="mt-3 max-w-3xl text-sm text-mist/65">Experiments use only authorized local tracks and cannot change the playlist recipe until you promote a score. Recent scalar runs are bounded and saved locally; audio paths and embeddings are never included.</p>
     </section>
 
     <section aria-labelledby="backend-heading">
