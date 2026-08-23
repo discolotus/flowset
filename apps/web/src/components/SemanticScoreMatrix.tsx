@@ -3,11 +3,27 @@ import { useEffect, useId, useMemo, useState, type KeyboardEvent } from "react";
 import { localAudioPreviewUrl } from "../lib/api";
 import { normalizeSemanticPrompt } from "../lib/semantic/prompts";
 import type { SemanticExperimentRunV1 } from "../lib/semantic/types";
+import type { SemanticScore } from "../lib/types";
 
 type SortDirection = "descending" | "ascending";
 
-function scoreFor(run: SemanticExperimentRunV1, trackId: string, scoreKey: string): number | null {
-  return run.results.find((result) => result.trackId === trackId)?.scores.find(({ key }) => key === scoreKey)?.score ?? null;
+interface MatrixColumn {
+  label: string;
+  scoreKey: string;
+  derived: boolean;
+  scoresByTrack?: ReadonlyMap<string, SemanticScore>;
+}
+
+export interface SemanticDerivedMatrixColumn {
+  scoreKey: string;
+  label: string;
+  scoresByTrack: ReadonlyMap<string, SemanticScore>;
+}
+
+function scoreFor(run: SemanticExperimentRunV1, trackId: string, column: MatrixColumn): number | null {
+  return column.scoresByTrack?.get(trackId)?.score
+    ?? run.results.find((result) => result.trackId === trackId)?.scores.find(({ key }) => key === column.scoreKey)?.score
+    ?? null;
 }
 
 function heatColor(score: number | null): string | undefined {
@@ -21,6 +37,7 @@ export function SemanticScoreMatrix({
   selectedScoreKey,
   sortDirection,
   audioPaths,
+  derivedColumn,
   onSelectScoreKey,
   onSort,
 }: {
@@ -28,6 +45,7 @@ export function SemanticScoreMatrix({
   selectedScoreKey: string;
   sortDirection: SortDirection;
   audioPaths: Record<string, string>;
+  derivedColumn?: SemanticDerivedMatrixColumn | null;
   onSelectScoreKey: (scoreKey: string) => void;
   onSort: (scoreKey: string) => void;
 }) {
@@ -37,21 +55,26 @@ export function SemanticScoreMatrix({
     setSelectedTrackId((current) => run.results.some(({ trackId }) => trackId === current) ? current : run.results[0]?.trackId ?? "");
   }, [run]);
 
-  const prompts = run.prompts.map((prompt) => ({
-    prompt,
-    scoreKey: run.scoreKeysByNormalizedLabel[normalizeSemanticPrompt(prompt)],
-  })).filter((entry): entry is { prompt: string; scoreKey: string } => Boolean(entry.scoreKey));
+  const columns = useMemo(() => {
+    const rawColumns: MatrixColumn[] = run.prompts.map((prompt) => ({
+      label: prompt,
+      scoreKey: run.scoreKeysByNormalizedLabel[normalizeSemanticPrompt(prompt)],
+      derived: false,
+    })).filter((entry): entry is MatrixColumn => Boolean(entry.scoreKey));
+    return derivedColumn ? [...rawColumns, { ...derivedColumn, derived: true }] : rawColumns;
+  }, [derivedColumn, run]);
   const snapshots = new Map(run.trackSnapshots.map((track) => [track.trackId, track]));
   const rows = useMemo(() => [...run.results].sort((left, right) => {
-    const leftScore = scoreFor(run, left.trackId, selectedScoreKey);
-    const rightScore = scoreFor(run, right.trackId, selectedScoreKey);
+    const selectedColumn = columns.find(({ scoreKey }) => scoreKey === selectedScoreKey) ?? columns[0];
+    const leftScore = selectedColumn ? scoreFor(run, left.trackId, selectedColumn) : null;
+    const rightScore = selectedColumn ? scoreFor(run, right.trackId, selectedColumn) : null;
     if (leftScore == null || rightScore == null) {
       if (leftScore == null && rightScore == null) return left.trackId.localeCompare(right.trackId);
       return leftScore == null ? 1 : -1;
     }
     const difference = sortDirection === "descending" ? rightScore - leftScore : leftScore - rightScore;
     return difference || left.trackId.localeCompare(right.trackId);
-  }), [run, selectedScoreKey, sortDirection]);
+  }), [columns, run, selectedScoreKey, sortDirection]);
   const selectedResult = run.results.find(({ trackId }) => trackId === selectedTrackId);
   const selectedTrack = snapshots.get(selectedTrackId);
 
@@ -64,7 +87,7 @@ export function SemanticScoreMatrix({
     if (!offset) return;
     event.preventDefault();
     const nextRow = Math.max(0, Math.min(rows.length - 1, rowIndex + offset[0]));
-    const nextColumn = Math.max(0, Math.min(prompts.length - 1, columnIndex + offset[1]));
+    const nextColumn = Math.max(0, Math.min(columns.length - 1, columnIndex + offset[1]));
     document.getElementById(`${matrixId}-cell-${nextRow}-${nextColumn}`)?.focus();
   }
 
@@ -75,14 +98,14 @@ export function SemanticScoreMatrix({
         <thead>
           <tr>
             <th scope="col" className="sticky left-0 top-0 z-30 min-w-60 border-b border-r border-line bg-[#111512] p-3">Track</th>
-            {prompts.map(({ prompt, scoreKey }) => <th
+            {columns.map(({ label, scoreKey, derived }) => <th
               key={scoreKey}
               scope="col"
               aria-sort={selectedScoreKey === scoreKey ? sortDirection : "none"}
               className={`sticky top-0 z-20 min-w-40 border-b border-line bg-[#111512] p-3 ${selectedScoreKey === scoreKey ? "text-acid" : ""}`}
             >
-              <button type="button" aria-pressed={selectedScoreKey === scoreKey} className="block w-full text-left font-medium" onClick={() => onSelectScoreKey(scoreKey)}>{prompt}</button>
-              <button type="button" aria-label={`Sort ${prompt} ${selectedScoreKey === scoreKey && sortDirection === "descending" ? "ascending" : "descending"}`} className="mt-1 text-[10px] text-mist/55" onClick={() => onSort(scoreKey)}>
+              <button type="button" aria-pressed={selectedScoreKey === scoreKey} className="block w-full text-left font-medium" onClick={() => onSelectScoreKey(scoreKey)}>{label}{derived && <span className="ml-2 text-[9px] uppercase tracking-wide text-mist/45">Derived</span>}</button>
+              <button type="button" aria-label={`Sort ${label} ${selectedScoreKey === scoreKey && sortDirection === "descending" ? "ascending" : "descending"}`} className="mt-1 text-[10px] text-mist/55" onClick={() => onSort(scoreKey)}>
                 Sort {selectedScoreKey === scoreKey && sortDirection === "descending" ? "ascending" : "descending"}
               </button>
             </th>)}
@@ -98,16 +121,16 @@ export function SemanticScoreMatrix({
                   <span className="text-xs font-normal text-mist/60">{track ? `${track.artist} · ${track.album}` : "Metadata unavailable"}</span>
                 </button>
               </th>
-              {prompts.map(({ prompt, scoreKey }, columnIndex) => {
-                const score = result.scores.find(({ key }) => key === scoreKey)?.score ?? null;
+              {columns.map((column, columnIndex) => {
+                const score = scoreFor(run, result.trackId, column);
                 const unavailable = result.status === "failed" ? "Failed" : "Unavailable";
-                return <td key={scoreKey} className="border-b border-line p-0" style={{ background: heatColor(score) }}>
+                return <td key={column.scoreKey} className="border-b border-line p-0" style={{ background: heatColor(score) }}>
                   <button
                     id={`${matrixId}-cell-${rowIndex}-${columnIndex}`}
                     type="button"
                     className="min-h-16 w-full px-3 py-2 text-left font-mono text-xs tabular-nums"
-                    aria-label={`${track?.name ?? result.trackId}, ${prompt}: ${score == null ? unavailable : score.toFixed(4)}`}
-                    onClick={() => { onSelectScoreKey(scoreKey); setSelectedTrackId(result.trackId); }}
+                    aria-label={`${track?.name ?? result.trackId}, ${column.label}: ${score == null ? unavailable : score.toFixed(4)}`}
+                    onClick={() => { onSelectScoreKey(column.scoreKey); setSelectedTrackId(result.trackId); }}
                     onKeyDown={(event) => moveCell(event, rowIndex, columnIndex)}
                   >{score == null ? <span className="font-sans text-mist/55">{unavailable}</span> : score.toFixed(4)}</button>
                 </td>;

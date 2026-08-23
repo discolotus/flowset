@@ -154,12 +154,26 @@ class SemanticScoreProvenance(BaseModel):
     representation: SemanticRepresentationIdentity | None = None
 
 
+class SemanticContrastDerivation(BaseModel):
+    type: Literal["difference"] = "difference"
+    formula: Literal["positive - negative"] = "positive - negative"
+    positive_score_key: str = Field(min_length=1, max_length=300)
+    negative_score_key: str = Field(min_length=1, max_length=300)
+
+
+class SemanticDerivedScoreProvenance(BaseModel):
+    kind: Literal["derived"] = "derived"
+    backend: Literal["flowset-derived"] = "flowset-derived"
+    model: Literal["contrast-v1"] = "contrast-v1"
+    derivation: SemanticContrastDerivation
+
+
 class SemanticScore(BaseModel):
     key: str
     label: str
     normalized_label: str
     score: float
-    provenance: SemanticScoreProvenance
+    provenance: SemanticDerivedScoreProvenance | SemanticScoreProvenance
 
 
 class Track(BaseModel):

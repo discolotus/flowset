@@ -7,6 +7,7 @@ from playlist_optimizer.models import (
     InputPlaylist,
     NumericParameter,
     RecipePreviewRequest,
+    SemanticDerivedScoreProvenance,
     SemanticScore,
     SemanticScoreProvenance,
     SortSpec,
@@ -109,6 +110,42 @@ def test_selected_semantic_score_drives_distribution_split_subgroup_and_scoped_s
     assert result.distribution.unavailable_track_count == 1
     assert result.factor_unavailable_track_count == 1
     assert result.outputs[-1].tracks[0].id == "missing"
+
+
+def test_flowset_derived_contrast_provenance_survives_recipe_preview() -> None:
+    key = "semantic:flowset-derived:contrast-v1:1234abcd"
+    provenance = SemanticDerivedScoreProvenance(
+        derivation={
+            "positive_score_key": "semantic:local-clap:model:peak",
+            "negative_score_key": "semantic:local-clap:model:warmup",
+        }
+    )
+    track = _track("derived", energy=0.5, danceability=0.5, tempo=120).model_copy(
+        update={
+            "semantic_scores": [
+                SemanticScore(
+                    key=key,
+                    label="Peak minus warmup",
+                    normalized_label="contrast:1234abcd",
+                    score=0.4,
+                    provenance=provenance,
+                )
+            ]
+        }
+    )
+    result = preview_recipe(
+        RecipePreviewRequest(
+            input_playlists=[InputPlaylist(id="source", name="Source", tracks=[track])],
+            distribution_semantic_score_key=key,
+        )
+    )
+
+    stored = result.outputs[0].tracks[0].semantic_scores[0]
+    assert isinstance(stored.provenance, SemanticDerivedScoreProvenance)
+    assert stored.provenance.derivation.formula == "positive - negative"
+    assert stored.provenance.derivation.positive_score_key.endswith(":peak")
+    reparsed = SemanticScore.model_validate(stored.model_dump())
+    assert isinstance(reparsed.provenance, SemanticDerivedScoreProvenance)
 
 
 def _inputs() -> tuple[list[Track], list[InputPlaylist]]:

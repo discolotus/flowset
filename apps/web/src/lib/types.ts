@@ -81,17 +81,34 @@ export interface SemanticRepresentationIdentity {
   pooling: string;
   segment: string;
 }
-export interface SemanticScoreProvenance {
+export interface SemanticDirectScoreProvenance {
   backend: string;
   model: string;
+  kind?: "direct";
   representation?: SemanticRepresentationIdentity | null;
 }
+export interface SemanticContrastScoreProvenance {
+  kind: "derived";
+  backend: "flowset-derived";
+  model: "contrast-v1";
+  representation?: never;
+  derivation: {
+    type: "difference";
+    formula: "positive - negative";
+    positive_score_key: string;
+    negative_score_key: string;
+  };
+}
+export type SemanticScoreProvenance = SemanticDirectScoreProvenance | SemanticContrastScoreProvenance;
 export interface SemanticScore {
   key: string;
   label: string;
   normalized_label: string;
   score: number;
   provenance: SemanticScoreProvenance;
+}
+export interface SemanticDirectScore extends Omit<SemanticScore, "provenance"> {
+  provenance: SemanticDirectScoreProvenance;
 }
 export interface SemanticBackendCapabilities {
   id: string; display_name: string; model: string; available: boolean;
@@ -107,7 +124,7 @@ export interface SemanticRankResponse {
   backend: SemanticBackendCapabilities;
   score_key: string;
   score_keys_by_normalized_label: Record<string, string>;
-  results: Array<{ track_id: string; status: "complete" | "unavailable" | "failed"; scores: SemanticScore[]; error?: string | null }>;
+  results: Array<{ track_id: string; status: "complete" | "unavailable" | "failed"; scores: SemanticDirectScore[]; error?: string | null }>;
   missing_track_ids: string[];
 }
 export type SemanticEmbeddingCacheStatus = "hit" | "miss" | "deduplicated";

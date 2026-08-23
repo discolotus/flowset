@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ReferenceTrackPicker } from "../components/ReferenceTrackPicker";
 import { SemanticPromptComposer, SEMANTIC_PROMPT_EXAMPLES, type SemanticPromptRow } from "../components/SemanticPromptComposer";
+import { SemanticContrastControl } from "../components/SemanticContrastControl";
+import { SemanticPromptDiagnostics } from "../components/SemanticPromptDiagnostics";
 import { SemanticScoreMatrix } from "../components/SemanticScoreMatrix";
 import { getSemanticCapabilities, localAudioPreviewUrl, rankSemanticAudio, rankSemanticReference } from "../lib/api";
+import { deriveSemanticContrast } from "../lib/semantic/contrast";
 import { normalizeSemanticPrompt, validateSemanticPrompts } from "../lib/semantic/prompts";
 import { createReferenceRankingRun, createTextRankingRun, fingerprintTrackIds, rememberSemanticRun } from "../lib/semantic/runs";
 import type { SemanticExperimentRunV1, SemanticPromotion, SemanticRecipeScope } from "../lib/semantic/types";
@@ -27,6 +30,8 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeRunId, setActiveRunId] = useState(runs[0]?.id ?? "");
   const [selectedScoreKey, setSelectedScoreKey] = useState("");
+  const [positiveScoreKey, setPositiveScoreKey] = useState("");
+  const [negativeScoreKey, setNegativeScoreKey] = useState("");
   const [sortDirection, setSortDirection] = useState<"descending" | "ascending">("descending");
   const [scopes, setScopes] = useState<Record<SemanticRecipeScope, boolean>>({ distribution: true, split: false, subgroup: false, sort: false });
   const [status, setStatus] = useState("Checking local semantic backends…");
@@ -75,11 +80,31 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
   const selectedTracks = authorizedTracks.filter(({ id }) => selectedIds.has(id));
   const activeRun = runs.find(({ id }) => id === activeRunId) ?? runs[0];
   const promptValidation = validateSemanticPrompts(promptRows.map(({ value }) => value), backend?.max_labels ?? 1);
+  const rawScoreOptions = activeRun?.kind === "text-ranking"
+    ? activeRun.prompts.map((label) => ({ label, scoreKey: activeRun.scoreKeysByNormalizedLabel[normalizeSemanticPrompt(label)] })).filter((option): option is { label: string; scoreKey: string } => Boolean(option.scoreKey))
+    : [];
+  const effectivePositiveScoreKey = rawScoreOptions.some(({ scoreKey }) => scoreKey === positiveScoreKey) ? positiveScoreKey : rawScoreOptions[0]?.scoreKey ?? "";
+  const effectiveNegativeScoreKey = rawScoreOptions.some(({ scoreKey }) => scoreKey === negativeScoreKey && scoreKey !== effectivePositiveScoreKey)
+    ? negativeScoreKey
+    : rawScoreOptions.find(({ scoreKey }) => scoreKey !== effectivePositiveScoreKey)?.scoreKey ?? "";
+  const contrast = useMemo(() => {
+    if (!activeRun || activeRun.kind !== "text-ranking" || !effectivePositiveScoreKey || !effectiveNegativeScoreKey) return null;
+    const positiveLabel = rawScoreOptions.find(({ scoreKey }) => scoreKey === effectivePositiveScoreKey)?.label;
+    const negativeLabel = rawScoreOptions.find(({ scoreKey }) => scoreKey === effectiveNegativeScoreKey)?.label;
+    if (!positiveLabel || !negativeLabel) return null;
+    return deriveSemanticContrast({ run: activeRun, positiveScoreKey: effectivePositiveScoreKey, negativeScoreKey: effectiveNegativeScoreKey, positiveLabel, negativeLabel });
+  }, [activeRun, effectiveNegativeScoreKey, effectivePositiveScoreKey, rawScoreOptions]);
   const activeScoreKey = activeRun?.kind === "reference-ranking"
     ? activeRun.scoreKey
-    : activeRun && Object.values(activeRun.scoreKeysByNormalizedLabel).includes(selectedScoreKey)
-    ? selectedScoreKey
-    : activeRun?.scoreKey ?? "";
+    : activeRun && (Object.values(activeRun.scoreKeysByNormalizedLabel).includes(selectedScoreKey) || contrast?.scoreKey === selectedScoreKey)
+      ? selectedScoreKey
+      : activeRun?.scoreKey ?? "";
+  const selectedContrast = contrast?.scoreKey === activeScoreKey ? contrast : null;
+  const derivedMatrixColumn = useMemo(() => contrast ? {
+    scoreKey: contrast.scoreKey,
+    label: contrast.label,
+    scoresByTrack: contrast.scoresByTrack,
+  } : null, [contrast]);
   const resultRows = useMemo(() => {
     if (!activeRun) return [];
     const metadata = new Map(activeRun.trackSnapshots.map((track) => [track.trackId, track]));
@@ -103,9 +128,15 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
   const oversized = Boolean(backend && selectedTracks.length > backend.max_tracks);
   const referenceOversized = Boolean(referenceBackend && selectedTracks.length > referenceBackend.max_tracks);
   const staleSource = Boolean(activeRun && activeRun.sourceTrackSetFingerprint !== fingerprintTrackIds(tracks.map(({ id }) => id)));
-  const hasPromotableScores = Boolean(activeRun?.results.some((result) =>
-    result.status === "complete" && result.scores.some(({ key }) => key === activeScoreKey),
-  ));
+  const hasPromotableScores = selectedContrast
+    ? selectedContrast.scoresByTrack.size > 0
+    : Boolean(activeRun?.results.some((result) => result.status === "complete" && result.scores.some(({ key }) => key === activeScoreKey)));
+  const selectedScoreLabel = selectedContrast?.label
+    ?? (activeRun?.kind === "reference-ranking" ? "the MERT similarity score" : rawScoreOptions.find(({ scoreKey }) => scoreKey === activeScoreKey)?.label)
+    ?? "the selected score";
+  const selectedScoreValues = activeRun?.results.map((result) => selectedContrast?.scoresByTrack.get(result.trackId)?.score
+    ?? result.scores.find(({ key }) => key === activeScoreKey)?.score
+    ?? null) ?? [];
   const availableCellCount = activeRun?.results.reduce((count, result) => count + result.scores.length, 0) ?? 0;
   const totalCellCount = (activeRun?.trackIds.length ?? 0) * (activeRun?.prompts.length ?? 0);
 
@@ -120,6 +151,8 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
       onRunsChange(rememberSemanticRun(runs, run));
       setActiveRunId(run.id);
       setSelectedScoreKey(run.scoreKey);
+      setPositiveScoreKey("");
+      setNegativeScoreKey("");
       setStatus(`${run.results.filter(({ status: resultStatus }) => resultStatus === "complete").length} ranked · ${run.results.filter(({ status: resultStatus }) => resultStatus !== "complete").length} unavailable. Recipe unchanged.`);
     } catch (reason) {
       setStatus(reason instanceof Error ? reason.message : "Semantic ranking failed.");
@@ -159,7 +192,10 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
 
   function promote() {
     if (!activeRun || !activeScoreKey || staleSource || !hasPromotableScores || !Object.values(scopes).some(Boolean)) return;
-    const byTrack = new Map(activeRun.results.map((result) => [result.trackId, result.scores.filter(({ key }) => key === activeScoreKey)]));
+    const byTrack = new Map(activeRun.results.map((result) => {
+      const derivedScore = selectedContrast?.scoresByTrack.get(result.trackId);
+      return [result.trackId, derivedScore ? [derivedScore] : result.scores.filter(({ key }) => key === activeScoreKey)];
+    }));
     const promoted = onPromote({ runId: activeRun.id, scoreKey: activeScoreKey, scopes }, byTrack);
     setStatus(promoted ? "Selected score promoted to the chosen recipe scopes." : "Promotion blocked because the selected source set changed.");
   }
@@ -225,22 +261,34 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
 
     {activeRun && <section aria-labelledby="results-heading">
       <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="eyebrow">Recent run</p><h2 id="results-heading" className="font-display text-xl font-semibold">{activeRun.kind === "reference-ranking" ? activeRun.query : activeRun.prompts.join(" · ")}</h2><p className="text-xs text-mist/60">{activeRun.backend.display_name} · revision {activeRun.backend.model} · {activeRun.status} · {activeRun.durationMs} ms</p><p className="mt-1 font-mono text-[10px] text-mist/45">{availableCellCount}/{totalCellCount} score cells available · {totalCellCount - availableCellCount} missing · {activeRun.trackSetFingerprint}</p></div>
-      <label>Recent runs<select aria-label="Recent experiment run" value={activeRun.id} onChange={(event) => { setActiveRunId(event.target.value); setSelectedScoreKey(""); }}>{runs.map((run) => <option key={run.id} value={run.id}>{run.query}{run.prompts.length > 1 ? ` +${run.prompts.length - 1}` : ""} · {run.createdAt}</option>)}</select></label></div>
+      <label>Recent runs<select aria-label="Recent experiment run" value={activeRun.id} onChange={(event) => { setActiveRunId(event.target.value); setSelectedScoreKey(""); setPositiveScoreKey(""); setNegativeScoreKey(""); }}>{runs.map((run) => <option key={run.id} value={run.id}>{run.query}{run.prompts.length > 1 ? ` +${run.prompts.length - 1}` : ""} · {run.createdAt}</option>)}</select></label></div>
       {activeRun.kind === "reference-ranking" ? <table className="mt-4 w-full text-left text-sm"><caption className="sr-only">Nearest-neighbor results</caption><thead><tr><th>Neighbor</th><th>Track</th><th>Status</th><th>Model provenance</th><th><button type="button" onClick={() => setSortDirection((current) => current === "descending" ? "ascending" : "descending")}>Similarity {sortDirection === "descending" ? "↓" : "↑"}</button></th><th>Preview</th></tr></thead>
       <tbody>{resultRows.map(({ result, track, score, neighborRank }) => <tr key={result.trackId} className="border-t border-line"><td>{result.trackId === activeRun.referenceTrackId ? "Reference" : neighborRank == null ? "—" : `#${neighborRank}`}</td><td className="py-3"><strong>{track?.name ?? result.trackId}</strong><br/><span className="text-xs text-mist/60">{track ? `${track.artist} · ${track.album}` : "Metadata unavailable"}</span></td><td>{result.status}{result.error ? ` · ${result.error}` : ""}</td><td>{activeRun.backend.id}<br/><span className="text-xs">{activeRun.backend.model}</span>{activeRun.representation && <span className="block text-xs">{activeRun.representation.layer} · {activeRun.representation.pooling} · {activeRun.representation.segment.replaceAll("_", " ")}</span>}</td><td>{score == null ? "—" : score.toFixed(4)}</td><td>{audioPaths[result.trackId] ? <audio aria-label={`Preview ${track?.name ?? result.trackId}`} controls preload="none" src={localAudioPreviewUrl(audioPaths[result.trackId])} /> : "Unavailable"}</td></tr>)}</tbody></table> : <SemanticScoreMatrix
         run={activeRun}
         selectedScoreKey={activeScoreKey}
         sortDirection={sortDirection}
         audioPaths={audioPaths}
+        derivedColumn={derivedMatrixColumn}
         onSelectScoreKey={setSelectedScoreKey}
         onSort={(scoreKey) => {
           if (activeScoreKey !== scoreKey) { setSelectedScoreKey(scoreKey); setSortDirection("descending"); }
           else setSortDirection((current) => current === "descending" ? "ascending" : "descending");
         }}
       />}
-      <div className="mt-5 rounded-xl border border-acid/20 bg-acid/[0.035] p-4" aria-label="Score promotion action bar"><fieldset><legend>Promote selected score to recipe</legend><p className="mt-1 text-xs text-mist/55">Only <strong>{activeRun.kind === "reference-ranking" ? "the MERT similarity score" : activeRun.prompts.find((prompt) => activeRun.scoreKeysByNormalizedLabel[normalizeSemanticPrompt(prompt)] === activeScoreKey) ?? "the selected prompt"}</strong> will be merged into track data.</p><div className="mt-3 flex flex-wrap gap-4">{ALL_SCOPES.map((scope) => <label key={scope} className="capitalize"><input type="checkbox" checked={scopes[scope]} onChange={(event) => setScopes((current) => ({ ...current, [scope]: event.target.checked }))} /> {scope === "sort" ? "ordering / sort" : scope}</label>)}</div></fieldset>
+      {activeRun.kind === "text-ranking" && <SemanticContrastControl
+        options={rawScoreOptions}
+        positiveScoreKey={effectivePositiveScoreKey}
+        negativeScoreKey={effectiveNegativeScoreKey}
+        contrast={contrast}
+        selected={Boolean(selectedContrast)}
+        onPositiveChange={setPositiveScoreKey}
+        onNegativeChange={setNegativeScoreKey}
+        onSelectContrast={() => { if (contrast) setSelectedScoreKey(contrast.scoreKey); }}
+      />}
+      <SemanticPromptDiagnostics label={selectedScoreLabel} values={selectedScoreValues} derivedFormula={selectedContrast?.formula} />
+      <div className="mt-5 rounded-xl border border-acid/20 bg-acid/[0.035] p-4" aria-label="Score promotion action bar"><fieldset><legend>Promote selected score to recipe</legend><p className="mt-1 text-xs text-mist/55">Only <strong>{selectedScoreLabel}</strong> will be merged into track data.{selectedContrast ? " This is a Flowset-derived contrast, not direct model output." : ""}</p><div className="mt-3 flex flex-wrap gap-4">{ALL_SCOPES.map((scope) => <label key={scope} className="capitalize"><input type="checkbox" checked={scopes[scope]} onChange={(event) => setScopes((current) => ({ ...current, [scope]: event.target.checked }))} /> {scope === "sort" ? "ordering / sort" : scope}</label>)}</div></fieldset>
       {staleSource && <p role="alert" className="mt-3 text-amber-200">The selected source set changed after this experiment. Run it again before promotion.</p>}
-      {!hasPromotableScores && <p role="alert" className="mt-3 text-amber-200">The selected prompt produced no usable scores to promote.</p>}
+      {!hasPromotableScores && <p role="alert" className="mt-3 text-amber-200">The selected score produced no usable values to promote.</p>}
       <button type="button" className="primary-button mt-3" onClick={promote} disabled={staleSource || !hasPromotableScores || !Object.values(scopes).some(Boolean)}>Promote selected score to recipe</button></div>
     </section>}
   </div>;

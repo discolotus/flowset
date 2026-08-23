@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.0-preview.11] - 2026-08-22
+
+- Add per-score coverage, range, histogram, and low-separation diagnostics to Semantic Lab.
+- Derive explicit positive-minus-negative contrast scores with typed Flowset provenance.
+- Promote selected raw or derived scores through the same guarded recipe scopes.
+
 ## [0.2.0-preview.10] - 2026-08-22
 
 - Add a searchable MERT reference-track explorer with readable metadata, authorized local preview,
