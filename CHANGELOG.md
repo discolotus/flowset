@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0-preview.13] - 2026-08-22
+
+- Compare two completed scalar Semantic Lab runs without rerunning inference, with deterministic
+  rank correlation, score coverage, and stable agreement/disagreement inspection.
+- Pin left and right score columns, audition authorized local tracks, and explicitly promote a
+  selected winner while preserving both source runs.
+
 ## [0.2.0-preview.12] - 2026-08-22
 
 - Add a bounded cached-embedding explorer with deterministic cosine neighbors, PCA coordinates,
