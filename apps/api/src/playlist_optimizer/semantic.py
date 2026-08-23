@@ -12,7 +12,7 @@ from typing import Protocol
 from pydantic import BaseModel
 
 from playlist_optimizer.config import get_settings
-from playlist_optimizer.models import SemanticBackendCapabilities
+from playlist_optimizer.models import SemanticBackendCapabilities, SemanticRepresentationIdentity
 
 
 class SemanticRankResult(BaseModel):
@@ -35,6 +35,7 @@ class _ConfiguredBackend:
     checkpoint_setting: str
     runtime_modules: tuple[str, ...]
     embedding_representation: str | None = None
+    default_representation: SemanticRepresentationIdentity | None = None
 
     def __init__(
         self,
@@ -70,6 +71,7 @@ class _ConfiguredBackend:
             license_note=self.license_note,
             embedding_representation=self.embedding_representation,
             max_embedding_batch=self.max_embedding_batch,
+            default_representation=self.default_representation,
         )
 
     def _require_checkpoint(self) -> Path:
@@ -262,6 +264,11 @@ class LocalMertBackend(_ConfiguredBackend):
     capability_names = ["reference_similarity", "embedding_extraction"]
     checkpoint_setting = "MERT_CHECKPOINT"
     runtime_modules = ("librosa", "torch", "transformers")
+    default_representation = SemanticRepresentationIdentity(
+        layer="last_hidden_state",
+        pooling="mean",
+        segment="whole_track",
+    )
     license_note = (
         "Published MERT weights are CC-BY-NC-4.0 and are not bundled by Flowset; trusted local "
         "checkpoint code may execute. MERT is not used for text scoring."
@@ -394,5 +401,15 @@ def normalize_semantic_label(label: str) -> str:
     return " ".join(label.split()).casefold()
 
 
-def semantic_score_key(backend_id: str, model: str, label: str) -> str:
-    return f"semantic:{backend_id}:{model}:{normalize_semantic_label(label)}"
+def semantic_score_key(
+    backend_id: str,
+    model: str,
+    label: str,
+    representation: SemanticRepresentationIdentity | None = None,
+) -> str:
+    representation_key = ""
+    if representation is not None:
+        representation_key = (
+            f":{representation.layer}:{representation.pooling}:{representation.segment}"
+        )
+    return f"semantic:{backend_id}:{model}{representation_key}:{normalize_semantic_label(label)}"

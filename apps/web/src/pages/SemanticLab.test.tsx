@@ -7,13 +7,63 @@ import type { SemanticExperimentRunV1, SemanticPromotion } from "../lib/semantic
 import type { Track } from "../lib/types";
 
 const track = { id: "track-1", name: "Readable Track", artist: "Lab Artist", album: "Lab Album", duration_ms: 120000, explicit: false, genres: [] };
-const backend = { id: "local-clap", display_name: "Local CLAP", model: "clap-v1", available: true, requires_local_audio: true, max_tracks: 2, max_labels: 3, capabilities: ["text_similarity"] };
+const backend = { id: "local-clap", display_name: "Local CLAP", model: "clap-v1", available: true, requires_local_audio: true, max_tracks: 2, max_labels: 3, max_embedding_batch: 20, capabilities: ["text_similarity"] };
 const focusKey = "semantic:local-clap:clap-v1:focus";
 const warmKey = "semantic:local-clap:clap-v1:warm glow";
+const mertBackend = { id: "local-mert", display_name: "Local MERT", model: "mert-v1", available: true, requires_local_audio: true, max_tracks: 10, max_labels: 1, max_embedding_batch: 10, capabilities: ["reference_similarity", "embedding_extraction"], embedding_representation: "mert-last-hidden-mean-30s-v1", default_representation: { layer: "last_hidden_state", pooling: "mean", segment: "whole_track" } };
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+
+it("searches readable MERT references, previews locally, and inspects neighbors before promotion", async () => {
+  const user = userEvent.setup();
+  const onRunsChange = vi.fn();
+  const onPromote = vi.fn(() => true);
+  const tracks = [
+    track,
+    { ...track, id: "track-2", name: "Second Wave", artist: "South Arc", album: "Night Set", duration_ms: 240000 },
+    { ...track, id: "track-3", name: "Close Echo", artist: "West Arc", album: "Night Set" },
+  ];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = String(input);
+    if (path.endsWith("/semantic/backends")) return { ok: true, json: async () => [backend, mertBackend] };
+    if (path.endsWith("/semantic/reference-rank")) return { ok: true, json: async () => ({
+      backend: mertBackend,
+      score_key: "semantic:local-mert:mert-v1:last_hidden_state:mean:whole_track:similar to track-2",
+      score_keys_by_normalized_label: { "similar to track-2": "semantic:local-mert:mert-v1:last_hidden_state:mean:whole_track:similar to track-2" },
+      results: [
+        { track_id: "track-1", status: "complete", scores: [{ key: "semantic:local-mert:mert-v1:last_hidden_state:mean:whole_track:similar to track-2", label: "similar", normalized_label: "similar", score: 0.2, provenance: { backend: "local-mert", model: "mert-v1", representation: mertBackend.default_representation } }] },
+        { track_id: "track-2", status: "complete", scores: [{ key: "semantic:local-mert:mert-v1:last_hidden_state:mean:whole_track:similar to track-2", label: "similar", normalized_label: "similar", score: 1, provenance: { backend: "local-mert", model: "mert-v1", representation: mertBackend.default_representation } }] },
+        { track_id: "track-3", status: "complete", scores: [{ key: "semantic:local-mert:mert-v1:last_hidden_state:mean:whole_track:similar to track-2", label: "similar", normalized_label: "similar", score: 0.8, provenance: { backend: "local-mert", model: "mert-v1", representation: mertBackend.default_representation } }] },
+      ],
+      missing_track_ids: [],
+      request: JSON.parse(String(init?.body)),
+    }) };
+    throw new Error(`Unexpected request: ${path}`);
+  }));
+  const audioPaths = { "track-1": "authorized/one.mp3", "track-2": "authorized/two.mp3", "track-3": "authorized/three.mp3" };
+  const view = render(<SemanticLab tracks={tracks} audioPaths={audioPaths} runs={[]} onRunsChange={onRunsChange} onPromote={onPromote} />);
+
+  await user.type(await screen.findByLabelText("Search reference tracks"), "South Arc");
+  expect(screen.queryByRole("radio", { name: /Readable Track/ })).toBeNull();
+  await user.click(screen.getByRole("radio", { name: /Second Wave/ }));
+  expect(screen.getByLabelText("Preview reference Second Wave").getAttribute("src")).toContain("authorized%2Ftwo.mp3");
+  expect(screen.getByLabelText("MERT representation identity").textContent).toContain("last_hidden_state · mean pooling · whole track · mert-v1");
+  await user.click(screen.getByRole("button", { name: "Inspect nearest neighbors" }));
+  await waitFor(() => expect(onRunsChange).toHaveBeenCalledTimes(1));
+  expect(JSON.parse(String(vi.mocked(fetch).mock.calls[1][1]?.body)).reference_track_id).toBe("track-2");
+  expect(onPromote).not.toHaveBeenCalled();
+
+  const runs = onRunsChange.mock.calls[0][0] as SemanticExperimentRunV1[];
+  view.rerender(<SemanticLab tracks={tracks} audioPaths={audioPaths} runs={runs} onRunsChange={onRunsChange} onPromote={onPromote} />);
+  expect(await screen.findByRole("cell", { name: "Reference" })).not.toBeNull();
+  expect(screen.getByRole("cell", { name: "#1" })).not.toBeNull();
+  expect(screen.getByText("0.8000")).not.toBeNull();
+  expect(screen.getAllByText(/last_hidden_state · mean · whole track/).length).toBeGreaterThan(0);
+  await user.click(screen.getByRole("button", { name: "Promote selected score to recipe" }));
+  expect(onPromote).toHaveBeenCalledOnce();
 });
 
 it("submits one bounded multi-prompt request and promotes only the selected raw score", async () => {
@@ -36,7 +86,7 @@ it("submits one bounded multi-prompt request and promotes only the selected raw 
     }) };
   }));
   const view = render(<SemanticLab tracks={[track]} audioPaths={{ "track-1": "authorized/track.mp3" }} runs={[]} onRunsChange={onRunsChange} onPromote={onPromote} />);
-  expect((await screen.findByLabelText(/Readable Track/) as HTMLInputElement).checked).toBe(true);
+  expect((await screen.findByRole("checkbox", { name: /Readable Track/ }) as HTMLInputElement).checked).toBe(true);
   await user.type(screen.getByLabelText("Prompt 1"), "focus");
   await user.click(screen.getByRole("button", { name: "Add prompt" }));
   await user.type(screen.getByLabelText("Prompt 2"), "warm glow");

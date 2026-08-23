@@ -1,4 +1,4 @@
-import type { SemanticBackendCapabilities, SemanticScore, Track } from "../types";
+import type { SemanticBackendCapabilities, SemanticRepresentationIdentity, SemanticScore, Track } from "../types";
 
 export type SemanticResultStatus = "complete" | "unavailable" | "failed";
 export type SemanticRecipeScope = "distribution" | "split" | "subgroup" | "sort";
@@ -24,12 +24,14 @@ export interface SemanticExperimentRunV1 {
   readonly createdAt: string;
   readonly completedAt: string;
   readonly durationMs: number;
-  readonly kind: "text-ranking";
+  readonly kind: "text-ranking" | "reference-ranking";
   readonly status: "complete" | "partial" | "failed";
   readonly backend: SemanticBackendCapabilities;
   readonly prompts: readonly string[];
   readonly scoreKeysByNormalizedLabel: Readonly<Record<string, string>>;
   readonly query: string;
+  readonly referenceTrackId?: string;
+  readonly representation?: SemanticRepresentationIdentity | null;
   readonly scoreKey: string;
   readonly trackIds: readonly string[];
   readonly trackSetFingerprint: string;

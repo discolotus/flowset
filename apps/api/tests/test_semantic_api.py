@@ -91,6 +91,11 @@ class FakeMertBackend(FakeSemanticBackend):
             available=True,
             capabilities=["reference_similarity", "embedding_extraction"],
             embedding_dimension=2,
+            default_representation={
+                "layer": "last_hidden_state",
+                "pooling": "mean",
+                "segment": "whole_track",
+            },
         )
 
     def embed(self, audio_paths: list[Path]) -> list[list[float]]:
@@ -166,6 +171,17 @@ def test_mert_reference_similarity_is_deterministic_and_never_a_text_score(tmp_p
         app.dependency_overrides.clear()
     assert response.status_code == 200
     assert [item["scores"][0]["score"] for item in response.json()["results"]] == [1.0, 0.0, 0.6]
+    assert response.json()["backend"]["default_representation"] == {
+        "layer": "last_hidden_state",
+        "pooling": "mean",
+        "segment": "whole_track",
+    }
+    assert response.json()["results"][0]["scores"][0]["provenance"]["representation"] == {
+        "layer": "last_hidden_state",
+        "pooling": "mean",
+        "segment": "whole_track",
+    }
+    assert ":last_hidden_state:mean:whole_track:" in response.json()["score_key"]
     assert rejected.status_code == 422
 
 

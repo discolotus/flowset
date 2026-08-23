@@ -142,9 +142,16 @@ class AudioFeatureProvenance(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class SemanticRepresentationIdentity(BaseModel):
+    layer: str
+    pooling: str
+    segment: str
+
+
 class SemanticScoreProvenance(BaseModel):
     backend: str
     model: str
+    representation: SemanticRepresentationIdentity | None = None
 
 
 class SemanticScore(BaseModel):
@@ -496,6 +503,7 @@ class SemanticBackendCapabilities(BaseModel):
     embedding_dimension: int | None = Field(default=None, ge=1, le=65536)
     embedding_representation: str | None = Field(default=None, min_length=1, max_length=200)
     max_embedding_batch: int = Field(default=20, ge=1, le=20)
+    default_representation: SemanticRepresentationIdentity | None = None
 
 
 class SemanticRankedScore(BaseModel):

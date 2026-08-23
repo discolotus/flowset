@@ -60,7 +60,12 @@ export function createTextRankingRun(input: {
       error: result.error,
       scores: Object.freeze(result.scores.map((score) => Object.freeze({
         ...score,
-        provenance: Object.freeze({ ...score.provenance }),
+        provenance: Object.freeze({
+          ...score.provenance,
+          representation: score.provenance.representation
+            ? Object.freeze({ ...score.provenance.representation })
+            : score.provenance.representation,
+        }),
       }))),
     })),
     ...input.tracks
@@ -89,6 +94,9 @@ export function createTextRankingRun(input: {
     backend: Object.freeze({
       ...input.backend,
       capabilities: Object.freeze([...input.backend.capabilities]),
+      default_representation: input.backend.default_representation
+        ? Object.freeze({ ...input.backend.default_representation })
+        : input.backend.default_representation,
     }),
     prompts: Object.freeze(prompts),
     scoreKeysByNormalizedLabel: Object.freeze(scoreKeysByNormalizedLabel),
@@ -103,6 +111,102 @@ export function createTextRankingRun(input: {
     warnings: Object.freeze(missing.size ? [`${missing.size} selected track${missing.size === 1 ? " was" : "s were"} unavailable.`] : []),
   };
   return Object.freeze(run);
+}
+
+export function createReferenceRankingRun(input: {
+  id: string;
+  referenceTrack: Track;
+  tracks: readonly Track[];
+  sourceTrackIds: readonly string[];
+  backend: SemanticBackendCapabilities;
+  response: SemanticRankResponse;
+  createdAt: string;
+  completedAt: string;
+}): SemanticExperimentRunV1 {
+  const representation = input.response.backend.default_representation;
+  const scoreKeysByNormalizedLabel = { ...input.response.score_keys_by_normalized_label };
+  const expectedScoreKeys = new Set(Object.values(scoreKeysByNormalizedLabel));
+  if (
+    input.backend.id !== input.response.backend.id
+    || input.backend.model !== input.response.backend.model
+    || !representation
+    || JSON.stringify(input.backend.default_representation) !== JSON.stringify(representation)
+    || input.response.score_key.length === 0
+    || !expectedScoreKeys.has(input.response.score_key)
+    || input.response.results.some((result) => result.scores.some((score) =>
+      !expectedScoreKeys.has(score.key)
+      || score.key !== input.response.score_key
+      || score.provenance.backend !== input.response.backend.id
+      || score.provenance.model !== input.response.backend.model
+      || JSON.stringify(score.provenance.representation) !== JSON.stringify(representation)
+    ))
+  ) {
+    throw new Error("Reference ranking returned scores outside the requested representation contract.");
+  }
+  const created = Date.parse(input.createdAt);
+  const completed = Date.parse(input.completedAt);
+  const missing = new Set(input.response.missing_track_ids);
+  const returnedTrackIds = new Set(input.response.results.map(({ track_id }) => track_id));
+  const results = [
+    ...input.response.results.map((result) => Object.freeze({
+      trackId: result.track_id,
+      status: result.status,
+      error: result.error,
+      scores: Object.freeze(result.scores.map((score) => Object.freeze({
+        ...score,
+        provenance: Object.freeze({
+          ...score.provenance,
+          representation: score.provenance.representation
+            ? Object.freeze({ ...score.provenance.representation })
+            : score.provenance.representation,
+        }),
+      }))),
+    })),
+    ...input.tracks
+      .filter(({ id }) => missing.has(id) && !returnedTrackIds.has(id))
+      .map(({ id }) => Object.freeze({
+        trackId: id,
+        status: "unavailable" as const,
+        error: "No semantic result was returned for this selected track.",
+        scores: Object.freeze([]),
+      })),
+  ];
+  const complete = results.filter(({ status }) => status === "complete").length;
+  const status = complete === 0 && input.tracks.length > 0
+    ? "failed"
+    : results.some(({ status: resultStatus }) => resultStatus !== "complete")
+      ? "partial"
+      : "complete";
+  const backend = Object.freeze({
+    ...input.backend,
+    capabilities: Object.freeze([...input.backend.capabilities]),
+    default_representation: input.backend.default_representation
+      ? Object.freeze({ ...input.backend.default_representation })
+      : input.backend.default_representation,
+  });
+  return Object.freeze({
+    schemaVersion: 1,
+    id: input.id,
+    createdAt: input.createdAt,
+    completedAt: input.completedAt,
+    durationMs: Math.max(0, completed - created),
+    kind: "reference-ranking",
+    status,
+    backend,
+    prompts: Object.freeze(Object.keys(scoreKeysByNormalizedLabel)),
+    scoreKeysByNormalizedLabel: Object.freeze(scoreKeysByNormalizedLabel),
+    query: `Neighbors of ${input.referenceTrack.name} — ${input.referenceTrack.artist}`,
+    referenceTrackId: input.referenceTrack.id,
+    representation: backend.default_representation,
+    scoreKey: input.response.score_key,
+    trackIds: Object.freeze(input.tracks.map(({ id }) => id)),
+    trackSetFingerprint: fingerprintTrackIds(input.tracks.map(({ id }) => id)),
+    sourceTrackSetFingerprint: fingerprintTrackIds(input.sourceTrackIds),
+    trackSnapshots: Object.freeze(input.tracks.map((track) => Object.freeze(snapshotTrack(track)))),
+    results: Object.freeze(results),
+    missingTrackIds: Object.freeze([...input.response.missing_track_ids]),
+    warnings: Object.freeze(missing.size ? [`${missing.size} selected track${missing.size === 1 ? " was" : "s were"} unavailable.`] : []),
+  });
 }
 
 export function rememberSemanticRun(

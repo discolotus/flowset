@@ -52,14 +52,13 @@ it("prevents a request beyond the selected backend track limit", async () => {
   expect((screen.getByRole("button", { name: "Rank by text" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
-it("uses a selected reference track with MERT and does not show a text query", async () => {
-  vi.spyOn(globalThis, "fetch")
-    .mockResolvedValueOnce(new Response(JSON.stringify([capability("local-mert", ["reference_similarity", "embedding_extraction"])])))
-    .mockResolvedValueOnce(new Response(JSON.stringify({ backend: {}, score_key: "semantic:local-mert:local-v1:similar to two", results: [], missing_track_ids: [] })));
+it("routes reference scoring to Semantic Lab instead of applying it directly", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify([
+    capability("local-muq-mulan", ["text_similarity"]),
+    capability("local-mert", ["reference_similarity", "embedding_extraction"]),
+  ])));
   render(<SemanticRankingControl audioPaths={{ one: "one.wav", two: "two.wav" }} onRanked={vi.fn()} />);
-  expect(await screen.findByLabelText("Reference track")).not.toBeNull();
-  expect(screen.queryByLabelText("Text-to-music query")).toBeNull();
-  await userEvent.selectOptions(screen.getByLabelText("Reference track"), "two");
-  await userEvent.click(screen.getByRole("button", { name: "Rank by sonic similarity" }));
-  expect(JSON.parse(String(vi.mocked(fetch).mock.calls[1][1]?.body)).reference_track_id).toBe("two");
+  expect((await screen.findByText(/Reference-track scoring is available in Semantic Lab/)).textContent).toContain("explicit promotion");
+  expect(screen.queryByRole("option", { name: "Local MERT" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Rank by sonic similarity" })).toBeNull();
 });
