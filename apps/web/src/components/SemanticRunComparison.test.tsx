@@ -42,10 +42,14 @@ it("compares recorded runs without inference and promotes an immutable selected 
   expect(screen.getByRole("alert").textContent).toMatch(/two different completed runs/);
   await user.selectOptions(screen.getByLabelText("Pinned left run"), "left");
   expect(screen.getByLabelText("Comparison summary").textContent).toContain("2/3");
-  expect(screen.getByText("Track A")).not.toBeNull();
+  expect(screen.getAllByText("Track A").length).toBeGreaterThan(0);
   expect(screen.getByText("Track C").closest("tr")?.textContent).toContain("Missing");
   expect(screen.getByLabelText("Compare preview Track A").getAttribute("src")).toContain("authorized%2Fa.mp3");
   expect(fetchMock).not.toHaveBeenCalled();
+
+  await user.click(screen.getByRole("button", { name: "1. left" }));
+  expect(screen.getByText("1/2 judged")).not.toBeNull();
+  expect((screen.getByRole("button", { name: "Export verdicts JSON" }) as HTMLButtonElement).disabled).toBe(false);
 
   await user.click(screen.getByRole("radio", { name: "Right" }));
   await user.click(screen.getByRole("button", { name: "Promote selected winner" }));

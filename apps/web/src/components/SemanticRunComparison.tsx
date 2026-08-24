@@ -1,9 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { localAudioPreviewUrl } from "../lib/api";
 import { compareSemanticRuns, comparisonPromotion } from "../lib/semantic/compare";
 import { normalizeSemanticPrompt } from "../lib/semantic/prompts";
 import type { SemanticExperimentRunV1, SemanticPromotion, SemanticRecipeScope } from "../lib/semantic/types";
+import {
+  buildSemanticEvaluationExport,
+  readSemanticVerdicts,
+  saveSemanticVerdicts,
+  semanticComparisonId,
+  semanticEvaluationCsv,
+  type SemanticVerdict,
+} from "../lib/semantic/verdicts";
 import type { Track } from "../lib/types";
 
 const ALL_SCOPES: SemanticRecipeScope[] = ["distribution", "split", "subgroup", "sort"];
@@ -23,6 +31,14 @@ function runLabel(run: SemanticExperimentRunV1): string {
   return `${run.query} · ${run.backend.display_name} · ${run.createdAt}`;
 }
 
+function semanticVerdictStorage(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 export function SemanticRunComparison({ runs, audioPaths, onPromote }: {
   runs: readonly SemanticExperimentRunV1[];
   audioPaths: Readonly<Record<string, string>>;
@@ -37,6 +53,8 @@ export function SemanticRunComparison({ runs, audioPaths, onPromote }: {
   const [winner, setWinner] = useState<"left" | "right">("left");
   const [scopes, setScopes] = useState<Record<SemanticRecipeScope, boolean>>({ distribution: true, split: false, subgroup: false, sort: false });
   const [status, setStatus] = useState("");
+  const [verdicts, setVerdicts] = useState<Record<string, SemanticVerdict>>({});
+  const [activeVerdictIndex, setActiveVerdictIndex] = useState(0);
 
   const left = completedRuns.find(({ id }) => id === leftRunId) ?? completedRuns[0];
   const right = completedRuns.find(({ id }) => id === rightRunId) ?? completedRuns[1];
@@ -51,6 +69,48 @@ export function SemanticRunComparison({ runs, audioPaths, onPromote }: {
   const visibleRows = comparison
     ? [...rankedRows, ...comparison.rows.filter(({ rankDelta }) => rankDelta == null)]
     : [];
+  const comparisonId = left && right && activeLeftScoreKey && activeRightScoreKey
+    ? semanticComparisonId(left.id, activeLeftScoreKey, right.id, activeRightScoreKey)
+    : "";
+  const verdictRows = comparison?.compatible ? comparison.disagreements : [];
+  const activeVerdictRow = verdictRows[Math.min(activeVerdictIndex, Math.max(0, verdictRows.length - 1))];
+  const verdictCount = verdictRows.filter(({ trackId }) => verdicts[trackId]).length;
+
+  useEffect(() => {
+    setVerdicts(comparisonId ? readSemanticVerdicts(semanticVerdictStorage(), comparisonId) : {});
+    setActiveVerdictIndex(0);
+  }, [comparisonId]);
+
+  function recordVerdict(verdict: SemanticVerdict) {
+    if (!comparisonId || !activeVerdictRow) return;
+    setVerdicts((current) => {
+      const next = { ...current, [activeVerdictRow.trackId]: verdict };
+      saveSemanticVerdicts(semanticVerdictStorage(), comparisonId, next);
+      return next;
+    });
+    setActiveVerdictIndex((current) => Math.min(current + 1, verdictRows.length - 1));
+  }
+
+  function downloadEvaluation(format: "json" | "csv") {
+    if (!left || !right || !comparison || verdictCount === 0) return;
+    const evaluation = buildSemanticEvaluationExport({
+      left,
+      leftScoreKey: activeLeftScoreKey,
+      right,
+      rightScoreKey: activeRightScoreKey,
+      rows: comparison.disagreements,
+      verdicts,
+      createdAt: new Date().toISOString(),
+    });
+    const contents = format === "json" ? `${JSON.stringify(evaluation, null, 2)}\n` : `${semanticEvaluationCsv(evaluation)}\n`;
+    const url = URL.createObjectURL(new Blob([contents], { type: format === "json" ? "application/json" : "text/csv" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `flowset-semantic-evaluation.${format}`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setStatus(`Exported ${verdictCount} local verdict${verdictCount === 1 ? "" : "s"} as ${format.toUpperCase()}.`);
+  }
 
   function promoteWinner() {
     const run = winner === "left" ? left : right;
@@ -90,6 +150,20 @@ export function SemanticRunComparison({ runs, audioPaths, onPromote }: {
           <button type="button" className="compact-button" aria-pressed={view === "agreements"} onClick={() => setView("agreements")}>Top agreements</button>
         </div>
         <div className="mt-3 overflow-auto"><table className="min-w-full text-left text-sm"><caption className="sr-only">Side-by-side scalar run comparison</caption><thead><tr><th>Track</th><th>Left score / rank</th><th>Right score / rank</th><th>Rank delta</th><th>Preview</th></tr></thead><tbody>{visibleRows.map((row) => <tr key={row.trackId} className="border-t border-line"><td className="py-3"><strong>{row.track.name}</strong><br/><span className="text-xs text-mist/60">{row.track.artist} · {row.track.album}</span></td><td>{row.leftScore == null ? "Missing" : `${row.leftScore.toFixed(4)} / ${row.leftRank}`}</td><td>{row.rightScore == null ? "Missing" : `${row.rightScore.toFixed(4)} / ${row.rightRank}`}</td><td>{row.rankDelta == null ? "—" : row.rankDelta.toFixed(2)}</td><td>{audioPaths[row.trackId] ? <audio aria-label={`Compare preview ${row.track.name}`} controls preload="none" src={localAudioPreviewUrl(audioPaths[row.trackId])} /> : "Unavailable"}</td></tr>)}</tbody></table></div>
+        <div className="mt-5 rounded-xl border border-line p-4" tabIndex={0} onKeyDown={(event) => {
+          const shortcut = ({ "1": "left", "2": "right", "3": "both", "4": "neither" } as const)[event.key as "1" | "2" | "3" | "4"];
+          if (shortcut) { event.preventDefault(); recordVerdict(shortcut); }
+        }} aria-labelledby="verdict-queue-heading">
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="eyebrow">A/B evaluation</p><h3 id="verdict-queue-heading" className="mt-1 font-display text-lg font-semibold">Disagreement verdict queue</h3><p className="mt-1 text-xs text-mist/60">Verdicts stay in this browser and do not alter either run. Focus this panel and use keys 1–4.</p></div><p className="font-mono text-xs text-mist/55">{verdictCount}/{verdictRows.length} judged</p></div>
+          {activeVerdictRow ? <div className="mt-4 rounded-lg border border-line p-3">
+            <p className="text-sm"><strong>{activeVerdictRow.track.name}</strong> <span className="text-mist/55">· {activeVerdictRow.track.artist}</span></p>
+            <p className="mt-1 text-xs text-mist/55">Left {activeVerdictRow.leftScore?.toFixed(4)} / rank {activeVerdictRow.leftRank} · Right {activeVerdictRow.rightScore?.toFixed(4)} / rank {activeVerdictRow.rightRank}</p>
+            {audioPaths[activeVerdictRow.trackId] && <audio className="mt-3 w-full" aria-label={`Verdict preview ${activeVerdictRow.track.name}`} controls preload="none" src={localAudioPreviewUrl(audioPaths[activeVerdictRow.trackId])} />}
+            <div className="mt-3 grid gap-2 sm:grid-cols-4">{(["left", "right", "both", "neither"] as const).map((verdict, index) => <button key={verdict} type="button" className="compact-button capitalize" aria-pressed={verdicts[activeVerdictRow.trackId] === verdict} onClick={() => recordVerdict(verdict)}>{index + 1}. {verdict}</button>)}</div>
+            <div className="mt-3 flex gap-2"><button type="button" className="compact-button" disabled={activeVerdictIndex === 0} onClick={() => setActiveVerdictIndex((current) => Math.max(0, current - 1))}>Previous</button><button type="button" className="compact-button" disabled={activeVerdictIndex >= verdictRows.length - 1} onClick={() => setActiveVerdictIndex((current) => Math.min(verdictRows.length - 1, current + 1))}>Next</button></div>
+          </div> : <p className="mt-3 text-xs text-mist/60">No paired disagreement rows are available.</p>}
+          <div className="mt-3 flex flex-wrap gap-2"><button type="button" className="compact-button" disabled={verdictCount === 0} onClick={() => downloadEvaluation("json")}>Export verdicts JSON</button><button type="button" className="compact-button" disabled={verdictCount === 0} onClick={() => downloadEvaluation("csv")}>Export verdicts CSV</button></div>
+        </div>
         <div className="mt-5 rounded-xl border border-acid/20 bg-acid/[0.035] p-4"><fieldset><legend>Promote comparison winner</legend><div className="mt-2 flex gap-4"><label><input type="radio" name="comparison-winner" checked={winner === "left"} onChange={() => setWinner("left")} /> Left</label><label><input type="radio" name="comparison-winner" checked={winner === "right"} onChange={() => setWinner("right")} /> Right</label></div><div className="mt-3 flex flex-wrap gap-4">{ALL_SCOPES.map((scope) => <label key={scope} className="capitalize"><input type="checkbox" checked={scopes[scope]} onChange={(event) => setScopes((current) => ({ ...current, [scope]: event.target.checked }))} /> {scope === "sort" ? "ordering / sort" : scope}</label>)}</div></fieldset>
           <button type="button" className="primary-button mt-3" disabled={!comparison.coverage.paired || !Object.values(scopes).some(Boolean)} onClick={promoteWinner}>Promote selected winner</button>
           <p role="status" className="mt-2 text-xs text-mist/60">{status}</p>
