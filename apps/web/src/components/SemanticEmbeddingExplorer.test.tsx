@@ -65,7 +65,16 @@ it("explores cached embeddings without rerunning inference or exposing recipe ac
   await waitFor(() => expect(screen.getByText("2 populated clusters")).not.toBeNull());
   expect(fetchMock).toHaveBeenCalledTimes(1);
 
-  await user.click(screen.getByRole("button", { name: "Use Beta as reference, cluster 1" }));
+  await user.click(screen.getByRole("button", { name: "Prototype similarity" }));
+  await user.click(screen.getByLabelText(/Alpha · Artist A/));
+  await user.click(screen.getByLabelText(/Gamma · Artist C/));
+  expect(screen.getByRole("heading", { name: "Prototype similarity" })).not.toBeNull();
+  expect(screen.getByText("Positive anchors (2)")).not.toBeNull();
+  expect(screen.getByText(/Alpha · anchor/)).not.toBeNull();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+
+  await user.click(screen.getByRole("button", { name: "Nearest neighbors" }));
+  await user.click(screen.getByRole("button", { name: /Use Beta as reference/ }));
   expect(await screen.findByRole("heading", { name: "Beta" })).not.toBeNull();
   expect(screen.getByText(/similarity 0\.9939/)).not.toBeNull();
   expect(fetchMock).toHaveBeenCalledTimes(1);

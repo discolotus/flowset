@@ -5,6 +5,7 @@ import {
   analyzeEmbeddingSpace,
   clusterEmbeddings,
   cosineNeighbors,
+  prototypeSimilarities,
   projectEmbeddingPca,
 } from "./embeddingExplorer";
 
@@ -22,6 +23,15 @@ describe("embedding explorer analysis", () => {
       expect.objectContaining({ trackId: "delta", similarity: 0 }),
       expect.objectContaining({ trackId: "gamma", similarity: 0 }),
     ]);
+  });
+
+  it("ranks tracks against the normalized centroid of positive anchors", () => {
+    const ranking = prototypeSimilarities(points, ["gamma", "alpha"]);
+    expect(ranking.map(({ trackId }) => trackId)).toEqual(["alpha", "gamma", "beta", "delta"]);
+    expect(ranking[0]).toMatchObject({ trackId: "alpha", similarity: expect.closeTo(Math.SQRT1_2, 6), isAnchor: true });
+    expect(ranking[2]).toMatchObject({ trackId: "beta", isAnchor: false });
+    expect(() => prototypeSimilarities(points, [])).toThrow(/at least one positive anchor/);
+    expect(() => prototypeSimilarities(points, ["missing"])).toThrow(/must be in this embedding space/);
   });
 
   it("produces deterministic PCA coordinates independent of input order", () => {

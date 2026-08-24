@@ -17,6 +17,10 @@ export interface EmbeddingNeighbor {
   distance: number;
 }
 
+export interface PrototypeSimilarity extends EmbeddingNeighbor {
+  readonly isAnchor: boolean;
+}
+
 export interface EmbeddingSpaceAnalysis {
   points: readonly ProjectedEmbeddingPoint[];
   requestedCount: number;
@@ -78,6 +82,26 @@ export function cosineNeighbors(
     .sort((left, right) =>
       right.similarity - left.similarity || left.trackId.localeCompare(right.trackId))
     .slice(0, Math.max(0, Math.floor(limit)));
+}
+
+export function prototypeSimilarities(
+  points: readonly EmbeddingPoint[],
+  anchorTrackIds: readonly string[],
+): PrototypeSimilarity[] {
+  const valid = validatePoints(points);
+  const uniqueAnchors = [...new Set(anchorTrackIds)].sort();
+  if (uniqueAnchors.length === 0) throw new Error("Choose at least one positive anchor.");
+  const byTrack = new Map(valid.map((point) => [point.trackId, point]));
+  const anchors = uniqueAnchors.map((trackId) => byTrack.get(trackId));
+  if (anchors.some((point) => !point)) throw new Error("Every positive anchor must be in this embedding space.");
+  const centroid = normalize(Array.from({ length: valid[0].values.length }, (_, dimension) =>
+    anchors.reduce((sum, point) => sum + point!.values[dimension], 0) / anchors.length));
+  const centroidMagnitude = magnitude(centroid);
+  return valid.map(({ trackId, values }) => {
+    const denominator = centroidMagnitude * magnitude(values);
+    const similarity = denominator === 0 ? 0 : dot(centroid, values) / denominator;
+    return { trackId, similarity, distance: 1 - similarity, isAnchor: uniqueAnchors.includes(trackId) };
+  }).sort((left, right) => right.similarity - left.similarity || left.trackId.localeCompare(right.trackId));
 }
 
 function multiply(matrix: readonly (readonly number[])[], vector: readonly number[]): number[] {
