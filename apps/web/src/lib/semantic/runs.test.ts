@@ -36,13 +36,14 @@ describe("semantic experiment runs", () => {
 
   it("records a reference run with an immutable representation identity", () => {
     const representation = { layer: "last_hidden_state", pooling: "mean", segment: "whole_track" };
-    const mert = { ...backend, id: "local-mert", model: "mert-v1", capabilities: ["reference_similarity", "embedding_extraction"] as const, default_representation: representation };
+    const mert = { ...backend, id: "local-mert", model: "mert-v1", capabilities: ["reference_similarity", "embedding_extraction"] as const, default_representation: representation, supported_representations: [representation] };
     const response: SemanticRankResponse = {
       backend: mert,
       score_key: "semantic:neighbors",
       score_keys_by_normalized_label: { similar: "semantic:neighbors" },
       results: [{ track_id: "a", status: "complete", scores: [{ key: "semantic:neighbors", label: "similar", normalized_label: "similar", score: 1, provenance: { backend: "local-mert", model: "mert-v1", representation } }] }],
       missing_track_ids: [],
+      representation,
     };
     const run = createReferenceRankingRun({ id: "reference-1", referenceTrack: track("a"), tracks: [track("a")], sourceTrackIds: ["a"], backend: mert, response, createdAt: "2026-08-21T10:00:00.000Z", completedAt: "2026-08-21T10:00:01.000Z" });
     representation.pooling = "changed";

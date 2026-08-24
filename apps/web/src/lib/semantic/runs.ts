@@ -123,14 +123,14 @@ export function createReferenceRankingRun(input: {
   createdAt: string;
   completedAt: string;
 }): SemanticExperimentRunV1 {
-  const representation = input.response.backend.default_representation;
+  const representation = input.response.representation;
   const scoreKeysByNormalizedLabel = { ...input.response.score_keys_by_normalized_label };
   const expectedScoreKeys = new Set(Object.values(scoreKeysByNormalizedLabel));
   if (
     input.backend.id !== input.response.backend.id
     || input.backend.model !== input.response.backend.model
     || !representation
-    || JSON.stringify(input.backend.default_representation) !== JSON.stringify(representation)
+    || !input.backend.supported_representations?.some((candidate) => JSON.stringify(candidate) === JSON.stringify(representation))
     || input.response.score_key.length === 0
     || !expectedScoreKeys.has(input.response.score_key)
     || input.response.results.some((result) => result.scores.some((score) =>
@@ -183,6 +183,7 @@ export function createReferenceRankingRun(input: {
     default_representation: input.backend.default_representation
       ? Object.freeze({ ...input.backend.default_representation })
       : input.backend.default_representation,
+    supported_representations: Object.freeze((input.backend.supported_representations ?? []).map((item) => Object.freeze({ ...item }))),
   });
   return Object.freeze({
     schemaVersion: 1,
@@ -197,7 +198,7 @@ export function createReferenceRankingRun(input: {
     scoreKeysByNormalizedLabel: Object.freeze(scoreKeysByNormalizedLabel),
     query: `Neighbors of ${input.referenceTrack.name} — ${input.referenceTrack.artist}`,
     referenceTrackId: input.referenceTrack.id,
-    representation: backend.default_representation,
+    representation: Object.freeze({ ...representation }),
     scoreKey: input.response.score_key,
     trackIds: Object.freeze(input.tracks.map(({ id }) => id)),
     trackSetFingerprint: fingerprintTrackIds(input.tracks.map(({ id }) => id)),

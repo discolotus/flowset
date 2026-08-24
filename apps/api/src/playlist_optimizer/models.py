@@ -518,6 +518,9 @@ class SemanticBackendCapabilities(BaseModel):
     embedding_representation: str | None = Field(default=None, min_length=1, max_length=200)
     max_embedding_batch: int = Field(default=20, ge=1, le=20)
     default_representation: SemanticRepresentationIdentity | None = None
+    supported_representations: list[SemanticRepresentationIdentity] = Field(
+        default_factory=list, max_length=32
+    )
 
 
 class SemanticRankedScore(BaseModel):
@@ -541,12 +544,14 @@ class SemanticRankResponse(BaseModel):
     score_keys_by_normalized_label: dict[str, str]
     results: list[SemanticTrackResult]
     missing_track_ids: list[str] = Field(default_factory=list)
+    representation: SemanticRepresentationIdentity | None = None
 
 
 class SemanticReferenceRankRequest(BaseModel):
     backend_id: str
     reference_track_id: str = Field(min_length=1, max_length=200)
     audio_paths: dict[str, str] = Field(min_length=1, max_length=100)
+    representation: SemanticRepresentationIdentity | None = None
 
 
 class SemanticEmbeddingRequest(BaseModel):

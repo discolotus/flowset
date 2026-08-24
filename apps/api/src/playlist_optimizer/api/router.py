@@ -266,6 +266,15 @@ def rank_semantic_reference(
         raise HTTPException(
             status_code=422, detail="Reference track must be included in audio_paths"
         )
+    selected_representation = payload.representation or capabilities.default_representation
+    if (
+        selected_representation is None
+        or selected_representation not in capabilities.supported_representations
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Selected representation is not advertised by this backend",
+        )
     paths = _resolve_semantic_paths(payload.audio_paths, settings)
     try:
         embeddings = backend.embed(paths)
@@ -283,12 +292,12 @@ def rank_semantic_reference(
         capabilities.id,
         capabilities.model,
         label,
-        capabilities.default_representation,
+        selected_representation,
     )
     provenance = SemanticScoreProvenance(
         backend=capabilities.id,
         model=capabilities.model,
-        representation=capabilities.default_representation,
+        representation=selected_representation,
     )
     results = [
         SemanticTrackResult(
@@ -311,6 +320,7 @@ def rank_semantic_reference(
         score_key=key,
         score_keys_by_normalized_label={normalize_semantic_label(label): key},
         results=results,
+        representation=selected_representation,
     )
 
 

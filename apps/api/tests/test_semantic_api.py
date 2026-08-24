@@ -96,6 +96,11 @@ class FakeMertBackend(FakeSemanticBackend):
                 "pooling": "mean",
                 "segment": "whole_track",
             },
+            supported_representations=[{
+                "layer": "last_hidden_state",
+                "pooling": "mean",
+                "segment": "whole_track",
+            }],
         )
 
     def embed(self, audio_paths: list[Path]) -> list[list[float]]:
@@ -157,6 +162,24 @@ def test_mert_reference_similarity_is_deterministic_and_never_a_text_score(tmp_p
                 "backend_id": "local-mert",
                 "reference_track_id": "ref",
                 "audio_paths": {"ref": "reference.wav", "other": "other.wav", "near": "near.wav"},
+                "representation": {
+                    "layer": "last_hidden_state",
+                    "pooling": "mean",
+                    "segment": "whole_track",
+                },
+            },
+        )
+        unsupported = client.post(
+            "/api/v1/semantic/reference-rank",
+            json={
+                "backend_id": "local-mert",
+                "reference_track_id": "ref",
+                "audio_paths": {"ref": "reference.wav"},
+                "representation": {
+                    "layer": "hidden_state_6",
+                    "pooling": "max",
+                    "segment": "whole_track",
+                },
             },
         )
         rejected = client.post(
@@ -183,6 +206,8 @@ def test_mert_reference_similarity_is_deterministic_and_never_a_text_score(tmp_p
     }
     assert ":last_hidden_state:mean:whole_track:" in response.json()["score_key"]
     assert rejected.status_code == 422
+    assert unsupported.status_code == 422
+    assert "not advertised" in unsupported.json()["detail"]
 
 
 def test_embedding_extraction_is_typed_model_bound_and_batch_bounded(tmp_path: Path) -> None:

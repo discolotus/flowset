@@ -136,6 +136,12 @@ function normalizeSemanticBackend(value: unknown): SemanticBackendCapabilities |
     if (!representation) return null;
     backend.default_representation = representation;
   }
+  if (candidate.supported_representations != null) {
+    if (!Array.isArray(candidate.supported_representations) || candidate.supported_representations.length > 32) return null;
+    const supported = candidate.supported_representations.map(normalizeRepresentation);
+    if (supported.some((item) => !item)) return null;
+    backend.supported_representations = supported as SemanticBackendCapabilities["supported_representations"];
+  }
   return backend;
 }
 
@@ -244,7 +250,7 @@ function normalizeSemanticRun(value: unknown): SemanticExperimentRunV1 | null {
   if (candidate.kind === "reference-ranking" && (!referenceTrackId || !trackIdSet.has(referenceTrackId) || !representation)) return null;
   if (candidate.kind === "reference-ranking") {
     const serializedRepresentation = JSON.stringify(representation);
-    if (JSON.stringify(backend.default_representation) !== serializedRepresentation || results.some((result) => result?.scores.some((score) => JSON.stringify(score.provenance.representation) !== serializedRepresentation))) return null;
+    if (!backend.supported_representations?.some((item) => JSON.stringify(item) === serializedRepresentation) || results.some((result) => result?.scores.some((score) => JSON.stringify(score.provenance.representation) !== serializedRepresentation))) return null;
   }
 
   return {

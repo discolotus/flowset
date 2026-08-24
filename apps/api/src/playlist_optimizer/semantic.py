@@ -36,6 +36,7 @@ class _ConfiguredBackend:
     runtime_modules: tuple[str, ...]
     embedding_representation: str | None = None
     default_representation: SemanticRepresentationIdentity | None = None
+    supported_representations: tuple[SemanticRepresentationIdentity, ...] = ()
 
     def __init__(
         self,
@@ -75,6 +76,7 @@ class _ConfiguredBackend:
             embedding_representation=self.embedding_representation,
             max_embedding_batch=self.max_embedding_batch,
             default_representation=self.default_representation,
+            supported_representations=list(self.supported_representations),
         )
 
     def _provisioning_manifest(self) -> Path:
@@ -277,6 +279,7 @@ class LocalMertBackend(_ConfiguredBackend):
         pooling="mean",
         segment="whole_track",
     )
+    supported_representations = (default_representation,)
     license_note = (
         "Published MERT weights are CC-BY-NC-4.0 and are not bundled by Flowset; trusted local "
         "checkpoint code may execute. MERT is not used for text scoring."

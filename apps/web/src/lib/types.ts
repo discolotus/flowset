@@ -119,6 +119,7 @@ export interface SemanticBackendCapabilities {
   embedding_representation?: string | null;
   max_embedding_batch: number;
   default_representation?: SemanticRepresentationIdentity | null;
+  supported_representations?: readonly SemanticRepresentationIdentity[];
 }
 export interface SemanticRankResponse {
   backend: SemanticBackendCapabilities;
@@ -126,6 +127,7 @@ export interface SemanticRankResponse {
   score_keys_by_normalized_label: Record<string, string>;
   results: Array<{ track_id: string; status: "complete" | "unavailable" | "failed"; scores: SemanticDirectScore[]; error?: string | null }>;
   missing_track_ids: string[];
+  representation?: SemanticRepresentationIdentity | null;
 }
 export type SemanticEmbeddingCacheStatus = "hit" | "miss" | "deduplicated";
 export interface SemanticEmbeddingResult {
