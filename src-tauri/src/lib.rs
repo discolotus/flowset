@@ -344,6 +344,9 @@ pub fn run() {
             let model_dir = bundled_essentia_model_dir(app)?;
             let semantic_paths =
                 semantic_models::app_model_paths(app.handle()).map_err(io::Error::other)?;
+            let semantic_cache_path = semantic_models::artifact_cache_path(
+                app.path().app_data_dir().map_err(io::Error::other)?,
+            );
             let sidecar = app
                 .shell()
                 .sidecar("playlist-optimizer-api")?
@@ -363,7 +366,8 @@ pub fn run() {
                 .env("ESSENTIA_MODEL_DIR", &model_dir)
                 .env("CLAP_CHECKPOINT", &semantic_paths.clap)
                 .env("MUQ_MULAN_CHECKPOINT", &semantic_paths.muq_mulan)
-                .env("MERT_CHECKPOINT", &semantic_paths.mert);
+                .env("MERT_CHECKPOINT", &semantic_paths.mert)
+                .env("SEMANTIC_CACHE_PATH", &semantic_cache_path);
             let (_events, child) = sidecar.spawn()?;
             *app.state::<BackendProcess>()
                 .0

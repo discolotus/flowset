@@ -22,6 +22,10 @@ pub(crate) fn paths_beneath(root: PathBuf) -> SemanticModelPaths {
     }
 }
 
+pub(crate) fn artifact_cache_path(app_data_root: PathBuf) -> PathBuf {
+    app_data_root.join("semantic-index-v1.sqlite3")
+}
+
 pub(crate) fn app_model_paths(app: &AppHandle) -> Result<SemanticModelPaths, String> {
     let root = app
         .path()
@@ -84,7 +88,7 @@ pub(crate) async fn provision_semantic_models(
 mod tests {
     use std::path::PathBuf;
 
-    use super::paths_beneath;
+    use super::{artifact_cache_path, paths_beneath};
 
     #[test]
     fn semantic_checkpoints_are_stable_beneath_application_support() {
@@ -104,6 +108,14 @@ mod tests {
         assert_eq!(
             paths.mert,
             PathBuf::from("/Application Support/Flowset/models/semantic/mert/MERT-v1-95M")
+        );
+    }
+
+    #[test]
+    fn semantic_artifact_cache_is_stable_beneath_application_support() {
+        assert_eq!(
+            artifact_cache_path(PathBuf::from("/Application Support/Flowset")),
+            PathBuf::from("/Application Support/Flowset/semantic-index-v1.sqlite3")
         );
     }
 }

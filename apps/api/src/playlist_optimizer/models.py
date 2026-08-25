@@ -585,6 +585,24 @@ class SemanticEmbeddingResponse(BaseModel):
     cache: SemanticEmbeddingCacheMetadata
 
 
+class SemanticNeighborRequest(BaseModel):
+    backend_id: str
+    reference_audio_path: str = Field(min_length=1, max_length=1000)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class SemanticNeighborMatch(BaseModel):
+    relative_path: str
+    similarity: float = Field(ge=-1, le=1)
+
+
+class SemanticNeighborResponse(BaseModel):
+    backend: SemanticBackendCapabilities
+    representation: str
+    search_engine: Literal["sqlite-vec", "python-exact", "unavailable"]
+    matches: list[SemanticNeighborMatch] = Field(max_length=100)
+
+
 class AnalysisProgressStageSnapshot(BaseModel):
     state: AnalysisStageState
     started_at: datetime | None = None

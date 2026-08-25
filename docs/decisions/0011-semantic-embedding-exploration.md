@@ -2,6 +2,9 @@
 
 Status: accepted
 
+Persistence amendment: ADR 0012 adds API-owned durable semantic artifacts. Raw vectors remain
+excluded from browser storage, workspace state, exports, and automatic recipe mutation.
+
 ## Context
 
 MuQ-MuLan and MERT expose bounded local embeddings, but raw vectors are not meaningful to users

@@ -17,6 +17,7 @@ from playlist_optimizer.semantic import (
     get_semantic_backend,
     get_semantic_registry,
 )
+from playlist_optimizer.semantic_artifacts import PersistentSemanticArtifactStore
 from playlist_optimizer.semantic_embedding_cache import (
     EmbeddingInferenceCache,
     get_semantic_embedding_cache,
@@ -104,7 +105,12 @@ class FakeMertBackend(FakeSemanticBackend):
         )
 
     def embed(self, audio_paths: list[Path]) -> list[list[float]]:
-        return [[1.0, 0.0], [0.0, 1.0], [0.6, 0.8]][: len(audio_paths)]
+        values = {
+            "reference.wav": [1.0, 0.0],
+            "other.wav": [0.0, 1.0],
+            "near.wav": [0.6, 0.8],
+        }
+        return [values[path.name] for path in audio_paths]
 
 
 class FakeRegistry:
@@ -143,6 +149,49 @@ def test_muq_text_ranking_is_selected_explicitly_and_model_bound(tmp_path: Path)
     assert capabilities[0]["capabilities"] == ["text_similarity", "embedding_extraction"]
     assert response.status_code == 200
     assert response.json()["score_key"] == "semantic:local-muq-mulan:muq-local-v1:hypnotic sunrise"
+
+
+def test_text_ranking_reuses_persisted_audio_embedding_after_l1_restart(tmp_path: Path) -> None:
+    class CacheableMuq(FakeMuqBackend):
+        def rank_embeddings(self, audio_paths, audio, labels):
+            return [
+                SemanticRankResult(
+                    relative_path=str(audio_paths[0]), scores={labels[0]: audio[0][0]}
+                )
+            ]
+
+    audio = tmp_path / "one.wav"
+    audio.write_bytes(b"one")
+    backend = CacheableMuq()
+    persistent = PersistentSemanticArtifactStore(tmp_path / "semantic.sqlite3")
+    app.dependency_overrides[get_semantic_registry] = lambda: FakeRegistry(backend)
+    app.dependency_overrides[get_semantic_embedding_cache] = lambda: EmbeddingInferenceCache(
+        2, persistent
+    )
+    from playlist_optimizer.config import Settings, get_settings
+
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        essentia_audio_root=tmp_path,
+        semantic_cache_path=None,
+        _env_file=None,
+    )
+    payload = {
+        "backend_id": "local-muq-mulan",
+        "labels": ["warm"],
+        "audio_paths": {"one": "one.wav"},
+    }
+    try:
+        client = TestClient(app)
+        first = client.post("/api/v1/semantic/rank", json=payload)
+        app.dependency_overrides[get_semantic_embedding_cache] = lambda: EmbeddingInferenceCache(
+            2, persistent
+        )
+        second = client.post("/api/v1/semantic/rank", json=payload)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert first.status_code == second.status_code == 200
+    assert backend.embed_calls == 1
 
 
 def test_mert_reference_similarity_is_deterministic_and_never_a_text_score(tmp_path: Path) -> None:
@@ -340,6 +389,67 @@ def test_embedding_partial_failures_and_cache_bounds_remain_visible(tmp_path: Pa
     assert body["cache"]["capacity"] == 1
 
 
+def test_persistent_neighbor_search_uses_sqlite_vec(tmp_path: Path) -> None:
+    class PathAwareMuq(FakeMuqBackend):
+        def embed(self, audio_paths: list[Path]) -> list[list[float]]:
+            self.embed_calls += 1
+            values = {
+                "one.wav": [1.0, 0.0],
+                "near.wav": [0.8, 0.2],
+                "far.wav": [0.0, 1.0],
+            }
+            return [values[path.name] for path in audio_paths]
+
+    for name in ("one.wav", "near.wav", "far.wav"):
+        (tmp_path / name).write_bytes(name.encode())
+    backend = PathAwareMuq()
+    cache = EmbeddingInferenceCache(
+        8, PersistentSemanticArtifactStore(tmp_path / "semantic.sqlite3")
+    )
+    app.dependency_overrides[get_semantic_registry] = lambda: FakeRegistry(backend)
+    app.dependency_overrides[get_semantic_embedding_cache] = lambda: cache
+    from playlist_optimizer.config import Settings, get_settings
+
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        essentia_audio_root=tmp_path,
+        semantic_max_embeddings=3,
+        semantic_max_embedding_dimension=4,
+        semantic_cache_path=None,
+        _env_file=None,
+    )
+    try:
+        client = TestClient(app)
+        indexed = client.post(
+            "/api/v1/semantic/embeddings",
+            json={
+                "backend_id": "local-muq-mulan",
+                "audio_paths": {
+                    "one": "one.wav",
+                    "near": "near.wav",
+                    "far": "far.wav",
+                },
+            },
+        )
+        neighbors = client.post(
+            "/api/v1/semantic/neighbors",
+            json={
+                "backend_id": "local-muq-mulan",
+                "reference_audio_path": "one.wav",
+                "limit": 2,
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert indexed.status_code == 200
+    assert neighbors.status_code == 200
+    assert neighbors.json()["search_engine"] == "sqlite-vec"
+    assert [item["relative_path"] for item in neighbors.json()["matches"]] == [
+        "one.wav",
+        "near.wav",
+    ]
+
+
 def test_semantic_rank_returns_provenance_bound_scores_and_missing_results(tmp_path: Path) -> None:
     (tmp_path / "one.wav").write_bytes(b"one")
     (tmp_path / "two.wav").write_bytes(b"two")
@@ -509,6 +619,60 @@ def test_clap_checkpoint_is_unavailable_until_provisioning_manifest_exists(
     (checkpoint.parent / "manifest.json").write_text("{}", encoding="utf-8")
     complete = LocalClapBackend(checkpoint).capabilities()
     assert complete.available is True
+
+
+def test_clap_exposes_audio_embeddings(tmp_path: Path, monkeypatch) -> None:
+    checkpoint = tmp_path / "clap" / "630k-audioset-best.pt"
+    checkpoint.parent.mkdir()
+    checkpoint.write_bytes(b"checkpoint")
+    (checkpoint.parent / "manifest.json").write_text("{}")
+    audio_path = tmp_path / "audio.wav"
+    audio_path.write_bytes(b"audio")
+
+    class FakeValue:
+        def __init__(self, values):
+            self.values = values
+
+        def detach(self):
+            return self
+
+        def cpu(self):
+            return self
+
+        def tolist(self):
+            return self.values
+
+    class FakeClapModel:
+        def eval(self):
+            return self
+
+    class FakeClapModule:
+        def __init__(self, **options):
+            assert options == {"enable_fusion": False, "amodel": "HTSAT-tiny", "device": "cpu"}
+            self.model = FakeClapModel()
+
+        def load_ckpt(self, path, *, verbose):
+            assert path == str(checkpoint)
+            assert verbose is False
+
+        def get_audio_embedding_from_filelist(self, paths):
+            assert paths == [str(audio_path)]
+            return FakeValue([[0.25, 0.75]])
+
+        def get_text_embedding(self, labels, *, use_tensor):
+            assert use_tensor is True
+            return FakeValue([[1.0, 0.0] for _ in labels])
+
+    monkeypatch.setitem(
+        sys.modules, "laion_clap", SimpleNamespace(CLAP_Module=FakeClapModule)
+    )
+    monkeypatch.setattr("playlist_optimizer.semantic.find_spec", lambda _module: object())
+    backend = LocalClapBackend(checkpoint)
+
+    capabilities = backend.capabilities()
+    assert capabilities.capabilities == ["text_similarity", "embedding_extraction"]
+    assert capabilities.embedding_representation == "clap-htsat-tiny-model-native-v1"
+    assert backend.embed([audio_path]) == [[0.25, 0.75]]
 
 
 @pytest.mark.parametrize("backend_class", [LocalMuqMulanBackend, LocalMertBackend])
