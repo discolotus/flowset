@@ -11,8 +11,6 @@ import json
 from hashlib import sha256
 from pathlib import Path
 
-from huggingface_hub import hf_hub_download, snapshot_download
-
 _CLAP_REPO = "lukewys/laion_clap"
 _CLAP_REVISION = "b3708341862f581175dba5c356a4ebf74a9b6651"
 _CLAP_FILENAME = "630k-audioset-best.pt"
@@ -147,6 +145,8 @@ def _pin_main_ref(cache: Path, repo_id: str, revision: str) -> None:
 
 
 def download_clap(root: Path) -> None:
+    from huggingface_hub import hf_hub_download, snapshot_download
+
     destination = root / "clap"
     cache = destination / "hf-cache"
     destination.mkdir(parents=True, exist_ok=True)
@@ -212,6 +212,8 @@ def download_clap(root: Path) -> None:
 
 
 def download_muq_mulan(root: Path, *, accept_restricted_weights: bool) -> None:
+    from huggingface_hub import hf_hub_download, snapshot_download
+
     if not accept_restricted_weights:
         raise SystemExit(
             "MuQ-MuLan weights are CC-BY-NC-4.0. Re-run with --accept-restricted-weights "
@@ -283,6 +285,8 @@ def download_muq_mulan(root: Path, *, accept_restricted_weights: bool) -> None:
 def download_mert(
     root: Path, *, accept_restricted_weights: bool, accept_trusted_code: bool
 ) -> None:
+    from huggingface_hub import snapshot_download
+
     if not accept_restricted_weights:
         raise SystemExit(
             "MERT weights are CC-BY-NC-4.0. Re-run with --accept-restricted-weights after "
