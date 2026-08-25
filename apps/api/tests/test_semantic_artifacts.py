@@ -155,3 +155,104 @@ def test_sqlite_vec_partitions_search_by_authorized_library(tmp_path: Path) -> N
     assert [(match.relative_path, match.similarity) for match in matches] == [
         ("a.wav", pytest.approx(0.0))
     ]
+
+
+def test_inventory_and_model_filtered_prune_are_previewable(tmp_path: Path) -> None:
+    now = 100
+    store = PersistentSemanticArtifactStore(
+        tmp_path / "semantic.sqlite3",
+        enable_vector_extension=False,
+        clock_ns=lambda: now,
+    )
+    audio = tmp_path / "one.wav"
+    audio.write_bytes(b"one")
+    store.put(key(model="model-v1"), audio, [1.0, 0.0])
+    now = 200
+    store.put(key(model="model-v2"), audio, [0.0, 1.0])
+
+    inventory = store.inventory()
+    preview = store.plan_prune(model="model-v1")
+
+    assert inventory.embedding_count == 2
+    assert {space.model for space in inventory.spaces} == {"model-v1", "model-v2"}
+    assert preview.matched_embeddings == 1
+    assert preview.deleted_embeddings == 0
+    assert store.count_embeddings() == 2
+
+    deleted = store.prune(model="model-v1", confirmation_token=preview.confirmation_token)
+
+    assert deleted.deleted_embeddings == 1
+    assert deleted.deleted_spaces == 1
+    assert store.count_embeddings() == 1
+    assert store.get(key(model="model-v1"), audio) is None
+    assert store.get(key(model="model-v2"), audio) == [0.0, 1.0]
+
+
+def test_prune_filters_by_creation_and_access_dates(tmp_path: Path) -> None:
+    now = 100
+    store = PersistentSemanticArtifactStore(
+        tmp_path / "semantic.sqlite3",
+        enable_vector_extension=False,
+        clock_ns=lambda: now,
+    )
+    old = tmp_path / "old.wav"
+    recent = tmp_path / "recent.wav"
+    old.write_bytes(b"old")
+    recent.write_bytes(b"recent")
+    old_stat = old.stat()
+    recent_stat = recent.stat()
+    store.put(
+        key(relative_path="old.wav").model_copy(
+            update={"size": old_stat.st_size, "modified_time_ns": old_stat.st_mtime_ns}
+        ),
+        old,
+        [1.0, 0.0],
+    )
+    now = 200
+    store.put(
+        key(relative_path="recent.wav").model_copy(
+            update={"size": recent_stat.st_size, "modified_time_ns": recent_stat.st_mtime_ns}
+        ),
+        recent,
+        [0.0, 1.0],
+    )
+    now = 300
+    assert store.get(
+        key(relative_path="old.wav").model_copy(
+            update={"size": old_stat.st_size, "modified_time_ns": old_stat.st_mtime_ns}
+        ),
+        old,
+    ) == [1.0, 0.0]
+
+    created_preview = store.plan_prune(created_before_ns=150)
+    accessed_preview = store.plan_prune(last_accessed_before_ns=250)
+
+    assert created_preview.matched_embeddings == 1
+    assert accessed_preview.matched_embeddings == 1
+    assert created_preview.confirmation_token != accessed_preview.confirmation_token
+
+
+def test_prune_rejects_a_stale_preview_token(tmp_path: Path) -> None:
+    store = PersistentSemanticArtifactStore(
+        tmp_path / "semantic.sqlite3", enable_vector_extension=False
+    )
+    first = tmp_path / "one.wav"
+    second = tmp_path / "two.wav"
+    first.write_bytes(b"one")
+    second.write_bytes(b"two")
+    store.put(key(), first, [1.0, 0.0])
+    preview = store.plan_prune(backend_id="local-muq-mulan")
+    second_stat = second.stat()
+    store.put(
+        key(relative_path="two.wav").model_copy(
+            update={"size": second_stat.st_size, "modified_time_ns": second_stat.st_mtime_ns}
+        ),
+        second,
+        [0.0, 1.0],
+    )
+
+    with pytest.raises(ValueError, match="preview"):
+        store.prune(
+            backend_id="local-muq-mulan",
+            confirmation_token=preview.confirmation_token,
+        )

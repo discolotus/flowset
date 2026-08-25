@@ -257,6 +257,22 @@ inference through CLAP, MuQ-MuLan, and MERT before reporting success; normal inf
 offline-only and reads only explicitly authorized local tracks. Browser development retains the
 operator commands `make setup-semantic-models` and `make test-semantic-models-smoke`.
 
+CLAP, MuQ-MuLan, and MERT audio embeddings use a shared persistent, content-addressed SQLite
+cache. `GET /api/v1/semantic/cache` reports its database size, location and embedding counts,
+active vector-search engine, and every model/representation/preprocessing/segment-policy space
+with creation and last-access timestamps.
+
+Cache deletion is a loopback-only, preview-and-confirm operation at
+`POST /api/v1/semantic/cache/prune`. A preview such as
+`{"model":"m-a-p/MERT-v1-95M"}` returns the exact affected counts and a confirmation token.
+Deleting those rows requires resubmitting the same filters with
+`{"dry_run":false,"confirm":true,"confirmation_token":"..."}`. Filters may select backend,
+model, representation, preprocessing version, segment policy, `created_before`, or
+`last_accessed_before` (timezone-bearing ISO 8601 timestamps). Clearing everything requires the
+separate `all_spaces: true` selector. Optional orphan-location cleanup defaults on; `compact: true`
+also runs SQLite `VACUUM` after deletion. If the cache changes after preview, confirmation fails
+and a new preview is required.
+
 ## Local folders and playlist files
 
 The frontend defaults to a local-source workspace when `ESSENTIA_AUDIO_ROOT` is available. It

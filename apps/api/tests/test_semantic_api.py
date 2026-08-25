@@ -17,11 +17,28 @@ from playlist_optimizer.semantic import (
     get_semantic_backend,
     get_semantic_registry,
 )
-from playlist_optimizer.semantic_artifacts import PersistentSemanticArtifactStore
+from playlist_optimizer.semantic_artifacts import (
+    PersistentSemanticArtifactStore,
+    SemanticArtifactKey,
+)
 from playlist_optimizer.semantic_embedding_cache import (
+    EmbeddingCacheKey,
     EmbeddingInferenceCache,
     get_semantic_embedding_cache,
 )
+
+
+def _cache_artifact_key(audio: Path, *, model: str) -> SemanticArtifactKey:
+    stat = audio.stat()
+    return SemanticArtifactKey(
+        library_id="test-library",
+        relative_path=audio.name,
+        size=stat.st_size,
+        modified_time_ns=stat.st_mtime_ns,
+        backend_id="local-muq-mulan",
+        model=model,
+        representation="muq-test-mean-v1",
+    )
 
 
 class FakeSemanticBackend:
@@ -484,6 +501,82 @@ def test_semantic_rank_returns_provenance_bound_scores_and_missing_results(tmp_p
     assert body["results"][0]["scores"][1]["score"] == pytest.approx(0.8)
     assert body["results"][1]["status"] == "unavailable"
     assert body["missing_track_ids"] == ["track-2"]
+
+
+def test_semantic_cache_inventory_and_confirmed_model_prune(tmp_path: Path) -> None:
+    database = tmp_path / "semantic.sqlite3"
+    store = PersistentSemanticArtifactStore(database, enable_vector_extension=False)
+    audio = tmp_path / "one.wav"
+    audio.write_bytes(b"one")
+    store.put(_cache_artifact_key(audio, model="model-v1"), audio, [1.0, 0.0])
+    store.put(_cache_artifact_key(audio, model="model-v2"), audio, [0.0, 1.0])
+    cache = EmbeddingInferenceCache(8, store)
+    cache.get_or_compute(
+        EmbeddingCacheKey(
+            backend_id="unrelated",
+            model="process-local",
+            representation="test",
+            relative_path="memory.wav",
+            size=1,
+            modified_time_ns=1,
+        ),
+        lambda: [1.0],
+    )
+    app.dependency_overrides[get_semantic_embedding_cache] = lambda: cache
+    try:
+        client = TestClient(app)
+        status = client.get("/api/v1/semantic/cache")
+        preview = client.post(
+            "/api/v1/semantic/cache/prune",
+            json={"model": "model-v1"},
+        )
+        rejected = client.post(
+            "/api/v1/semantic/cache/prune",
+            json={"model": "model-v1", "dry_run": False, "confirm": True},
+        )
+        deleted = client.post(
+            "/api/v1/semantic/cache/prune",
+            json={
+                "model": "model-v1",
+                "dry_run": False,
+                "confirm": True,
+                "confirmation_token": preview.json()["confirmation_token"],
+            },
+        )
+        after = client.get("/api/v1/semantic/cache")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert status.status_code == 200
+    assert status.json()["embedding_count"] == 2
+    assert {space["model"] for space in status.json()["spaces"]} == {
+        "model-v1",
+        "model-v2",
+    }
+    assert preview.status_code == 200
+    assert preview.json()["matched_embeddings"] == 1
+    assert rejected.status_code == 422
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted_embeddings"] == 1
+    assert deleted.json()["cleared_l1_entries"] == 1
+    assert after.json()["embedding_count"] == 1
+    assert [space["model"] for space in after.json()["spaces"]] == ["model-v2"]
+
+
+def test_semantic_cache_prune_requires_a_filter_or_explicit_all_spaces() -> None:
+    cache = EmbeddingInferenceCache(2)
+    app.dependency_overrides[get_semantic_embedding_cache] = lambda: cache
+    try:
+        client = TestClient(app)
+        unscoped = client.post("/api/v1/semantic/cache/prune", json={})
+        explicit = client.post(
+            "/api/v1/semantic/cache/prune", json={"all_spaces": True}
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert unscoped.status_code == 422
+    assert explicit.status_code == 503
 
 
 def test_semantic_rank_rejects_escaping_paths(tmp_path: Path) -> None:

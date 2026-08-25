@@ -31,6 +31,11 @@ preprocessing, or segment-policy boundary.
   the active search engine.
 - Expose cached-library neighbor search only through the loopback API. SQLite is the source of
   truth; any future approximate index is rebuildable derived state.
+- Expose loopback-only inventory and prune operations. Inventory reports model-bound spaces and
+  timestamps. Pruning can filter by backend, model, representation, preprocessing, segment policy,
+  creation time, or last-access time. It is dry-run by default; mutation requires an explicit flag
+  plus a token binding the exact filters and matching embedding IDs. Clearing all spaces requires
+  a separate selector, and a changed cache invalidates an earlier preview.
 - Configure the database with `SEMANTIC_CACHE_PATH`. The default is Flowset's user Application
   Support directory on macOS. Set it to a location on an external volume when a portable index is
   desired.
@@ -52,3 +57,8 @@ correctness does not depend on it loading successfully.
 This decision provides artifact persistence and exact vector retrieval. Resumable whole-library
 job scheduling, pause/resume UI, explicit multi-segment extraction, and optional ANN indexes remain
 separate implementation slices.
+
+Model/date pruning deletes derived vectors, empty vector spaces, and optionally unreferenced
+location metadata. It clears process-local L1 values after a committed deletion so removed rows
+cannot remain usable until restart. Compaction is explicit because `VACUUM` can be comparatively
+expensive on a large external-volume database.

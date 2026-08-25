@@ -4,6 +4,8 @@ import json
 import math
 import sqlite3
 import struct
+import time
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
@@ -48,14 +50,57 @@ class SemanticNeighbor:
     similarity: float
 
 
+@dataclass(frozen=True)
+class SemanticCacheSpaceInventory:
+    space_id: str
+    backend_id: str
+    model: str
+    representation: str
+    preprocessing: str
+    segment_policy: str
+    dimension: int
+    embedding_count: int
+    vector_bytes: int
+    oldest_created_at_ns: int | None
+    newest_created_at_ns: int | None
+    last_accessed_at_ns: int | None
+
+
+@dataclass(frozen=True)
+class SemanticCacheInventory:
+    database_bytes: int
+    location_count: int
+    embedding_count: int
+    search_engine: str
+    spaces: tuple[SemanticCacheSpaceInventory, ...]
+
+
+@dataclass(frozen=True)
+class SemanticCachePruneResult:
+    matched_embeddings: int
+    matched_spaces: int
+    matched_vector_bytes: int
+    deleted_embeddings: int
+    deleted_spaces: int
+    deleted_locations: int
+    confirmation_token: str
+
+
 class PersistentSemanticArtifactStore:
     """Content-addressed semantic embeddings with optional sqlite-vec KNN acceleration."""
 
-    def __init__(self, database_path: Path, *, enable_vector_extension: bool = True):
+    def __init__(
+        self,
+        database_path: Path,
+        *,
+        enable_vector_extension: bool = True,
+        clock_ns: Callable[[], int] = time.time_ns,
+    ):
         self.database_path = database_path
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._extension_requested = enable_vector_extension
         self._vector_enabled = False
+        self._clock_ns = clock_ns
         self._initialize()
 
     @property
@@ -73,6 +118,11 @@ class PersistentSemanticArtifactStore:
             ).fetchone()
             if row is None:
                 return None
+            connection.execute(
+                """UPDATE embeddings SET last_accessed_at_ns = ?
+                WHERE content_sha256 = ? AND space_id = ?""",
+                (self._clock_ns(), content_hash, key.space_id),
+            )
             if self._vector_enabled and row[2]:
                 self._upsert_vector_location(
                     connection, row[2], location_id, key.library_id, row[0]
@@ -85,15 +135,26 @@ class PersistentSemanticArtifactStore:
         with self._connection() as connection:
             content_hash, location_id = self._resolve_content_hash(connection, key, audio_path)
             vector_table = self._ensure_space(connection, key, dimension)
+            now = self._clock_ns()
             connection.execute(
                 """
-                INSERT INTO embeddings(content_sha256, space_id, dimension, vector)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO embeddings(
+                    content_sha256, space_id, dimension, vector,
+                    created_at_ns, last_accessed_at_ns
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(content_sha256, space_id) DO UPDATE SET
                     dimension = excluded.dimension,
-                    vector = excluded.vector
+                    vector = excluded.vector,
+                    last_accessed_at_ns = excluded.last_accessed_at_ns
                 """,
-                (content_hash, key.space_id, dimension, _pack_vector(vector)),
+                (
+                    content_hash,
+                    key.space_id,
+                    dimension,
+                    _pack_vector(vector),
+                    now,
+                    now,
+                ),
             )
             if vector_table is not None:
                 self._upsert_vector_location(
@@ -103,6 +164,30 @@ class PersistentSemanticArtifactStore:
                     key.library_id,
                     _pack_vector(vector),
                 )
+
+    def touch(self, key: SemanticArtifactKey) -> bool:
+        """Record an L1 hit without rehashing an unchanged file location."""
+        with self._connection() as connection:
+            before = connection.total_changes
+            connection.execute(
+                """
+                UPDATE embeddings SET last_accessed_at_ns = ?
+                WHERE space_id = ? AND content_sha256 = (
+                    SELECT content_sha256 FROM file_locations
+                    WHERE library_id = ? AND relative_path = ?
+                        AND size = ? AND modified_time_ns = ?
+                )
+                """,
+                (
+                    self._clock_ns(),
+                    key.space_id,
+                    key.library_id,
+                    key.relative_path,
+                    key.size,
+                    key.modified_time_ns,
+                ),
+            )
+            return connection.total_changes > before
 
     def nearest(
         self, key: SemanticArtifactKey, query: list[float], *, limit: int
@@ -167,6 +252,228 @@ class PersistentSemanticArtifactStore:
         with self._connection() as connection:
             return int(connection.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0])
 
+    def inventory(self) -> SemanticCacheInventory:
+        with self._connection() as connection:
+            location_count = int(
+                connection.execute("SELECT COUNT(*) FROM file_locations").fetchone()[0]
+            )
+            rows = connection.execute(
+                """
+                SELECT
+                    s.id, s.backend_id, s.model, s.representation, s.preprocessing,
+                    s.segment_policy, s.dimension, COUNT(e.id),
+                    COALESCE(SUM(LENGTH(e.vector)), 0), MIN(e.created_at_ns),
+                    MAX(e.created_at_ns), MAX(e.last_accessed_at_ns)
+                FROM embedding_spaces s
+                LEFT JOIN embeddings e ON e.space_id = s.id
+                GROUP BY s.id
+                ORDER BY s.backend_id, s.model, s.representation, s.id
+                """
+            ).fetchall()
+        spaces = tuple(
+            SemanticCacheSpaceInventory(
+                space_id=row[0],
+                backend_id=row[1],
+                model=row[2],
+                representation=row[3],
+                preprocessing=row[4],
+                segment_policy=row[5],
+                dimension=int(row[6]),
+                embedding_count=int(row[7]),
+                vector_bytes=int(row[8]),
+                oldest_created_at_ns=row[9],
+                newest_created_at_ns=row[10],
+                last_accessed_at_ns=row[11],
+            )
+            for row in rows
+        )
+        return SemanticCacheInventory(
+            database_bytes=self._database_bytes(),
+            location_count=location_count,
+            embedding_count=sum(space.embedding_count for space in spaces),
+            search_engine=self.search_engine,
+            spaces=spaces,
+        )
+
+    def plan_prune(
+        self,
+        *,
+        backend_id: str | None = None,
+        model: str | None = None,
+        representation: str | None = None,
+        preprocessing: str | None = None,
+        segment_policy: str | None = None,
+        created_before_ns: int | None = None,
+        last_accessed_before_ns: int | None = None,
+    ) -> SemanticCachePruneResult:
+        filters = _prune_filters(
+            backend_id=backend_id,
+            model=model,
+            representation=representation,
+            preprocessing=preprocessing,
+            segment_policy=segment_policy,
+            created_before_ns=created_before_ns,
+            last_accessed_before_ns=last_accessed_before_ns,
+        )
+        with self._connection() as connection:
+            return self._plan_prune(connection, filters)
+
+    def prune(
+        self,
+        *,
+        confirmation_token: str,
+        backend_id: str | None = None,
+        model: str | None = None,
+        representation: str | None = None,
+        preprocessing: str | None = None,
+        segment_policy: str | None = None,
+        created_before_ns: int | None = None,
+        last_accessed_before_ns: int | None = None,
+        remove_orphan_locations: bool = True,
+        compact: bool = False,
+    ) -> SemanticCachePruneResult:
+        filters = _prune_filters(
+            backend_id=backend_id,
+            model=model,
+            representation=representation,
+            preprocessing=preprocessing,
+            segment_policy=segment_policy,
+            created_before_ns=created_before_ns,
+            last_accessed_before_ns=last_accessed_before_ns,
+        )
+        deleted_spaces = deleted_locations = 0
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            preview = self._plan_prune(connection, filters)
+            if confirmation_token != preview.confirmation_token:
+                raise ValueError("Cache changed after the prune preview; preview it again")
+            rows = self._matching_embeddings(connection, filters)
+            touched_spaces: dict[str, str | None] = {}
+            for (
+                embedding_id,
+                content_hash,
+                space_id,
+                vector_table,
+                _vector_bytes,
+                _created_at_ns,
+                _last_accessed_at_ns,
+            ) in rows:
+                touched_spaces[space_id] = vector_table
+                if vector_table and self._vector_enabled:
+                    location_ids = connection.execute(
+                        "SELECT id FROM file_locations WHERE content_sha256 = ?",
+                        (content_hash,),
+                    ).fetchall()
+                    connection.executemany(
+                        f'DELETE FROM "{vector_table}" WHERE location_id = ?', location_ids
+                    )
+                connection.execute("DELETE FROM embeddings WHERE id = ?", (embedding_id,))
+            for space_id, vector_table in touched_spaces.items():
+                remaining = connection.execute(
+                    "SELECT 1 FROM embeddings WHERE space_id = ? LIMIT 1", (space_id,)
+                ).fetchone()
+                if remaining is None and (not vector_table or self._vector_enabled):
+                    if vector_table:
+                        connection.execute(f'DROP TABLE IF EXISTS "{vector_table}"')
+                    connection.execute("DELETE FROM embedding_spaces WHERE id = ?", (space_id,))
+                    deleted_spaces += 1
+            if remove_orphan_locations:
+                before = connection.total_changes
+                connection.execute(
+                    """DELETE FROM file_locations
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM embeddings
+                        WHERE embeddings.content_sha256 = file_locations.content_sha256
+                    )"""
+                )
+                deleted_locations = connection.total_changes - before
+        if compact:
+            self.compact()
+        return SemanticCachePruneResult(
+            matched_embeddings=preview.matched_embeddings,
+            matched_spaces=preview.matched_spaces,
+            matched_vector_bytes=preview.matched_vector_bytes,
+            deleted_embeddings=len(rows),
+            deleted_spaces=deleted_spaces,
+            deleted_locations=deleted_locations,
+            confirmation_token=preview.confirmation_token,
+        )
+
+    def compact(self) -> None:
+        with self._connection() as connection:
+            connection.execute("VACUUM")
+
+    def _plan_prune(
+        self, connection: sqlite3.Connection, filters: dict[str, object]
+    ) -> SemanticCachePruneResult:
+        rows = self._matching_embeddings(connection, filters)
+        payload = json.dumps(
+            {
+                "filters": filters,
+                "matches": [
+                    {
+                        "id": row[0],
+                        "content_sha256": row[1],
+                        "space_id": row[2],
+                        "created_at_ns": row[5],
+                        "last_accessed_at_ns": row[6],
+                    }
+                    for row in rows
+                ],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        return SemanticCachePruneResult(
+            matched_embeddings=len(rows),
+            matched_spaces=len({row[2] for row in rows}),
+            matched_vector_bytes=sum(int(row[4]) for row in rows),
+            deleted_embeddings=0,
+            deleted_spaces=0,
+            deleted_locations=0,
+            confirmation_token=sha256(payload).hexdigest(),
+        )
+
+    def _matching_embeddings(
+        self, connection: sqlite3.Connection, filters: dict[str, object]
+    ) -> list[tuple[int, str, str, str | None, int, int, int]]:
+        clauses: list[str] = []
+        parameters: list[object] = []
+        columns = {
+            "backend_id": "s.backend_id",
+            "model": "s.model",
+            "representation": "s.representation",
+            "preprocessing": "s.preprocessing",
+            "segment_policy": "s.segment_policy",
+            "created_before_ns": "e.created_at_ns <",
+            "last_accessed_before_ns": "e.last_accessed_at_ns <",
+        }
+        for name, value in filters.items():
+            if value is None:
+                continue
+            column = columns[name]
+            clauses.append(f"{column} ?" if column.endswith("<") else f"{column} = ?")
+            parameters.append(value)
+        where = " AND ".join(clauses) if clauses else "1 = 1"
+        return connection.execute(
+            f"""SELECT e.id, e.content_sha256, e.space_id, s.vector_table, LENGTH(e.vector),
+                e.created_at_ns, e.last_accessed_at_ns
+            FROM embeddings e JOIN embedding_spaces s ON s.id = e.space_id
+            WHERE {where} ORDER BY e.id""",
+            parameters,
+        ).fetchall()
+
+    def _database_bytes(self) -> int:
+        return sum(
+            path.stat().st_size
+            for path in (
+                self.database_path,
+                Path(f"{self.database_path}-wal"),
+                Path(f"{self.database_path}-shm"),
+            )
+            if path.is_file()
+        )
+
     def _initialize(self) -> None:
         with self._connection(load_extension=True) as connection:
             connection.executescript(
@@ -192,7 +499,8 @@ class PersistentSemanticArtifactStore:
                     preprocessing TEXT NOT NULL,
                     segment_policy TEXT NOT NULL,
                     dimension INTEGER NOT NULL,
-                    vector_table TEXT
+                    vector_table TEXT,
+                    created_at_ns INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE TABLE IF NOT EXISTS embeddings(
                     id INTEGER PRIMARY KEY,
@@ -200,11 +508,14 @@ class PersistentSemanticArtifactStore:
                     space_id TEXT NOT NULL REFERENCES embedding_spaces(id),
                     dimension INTEGER NOT NULL,
                     vector BLOB NOT NULL,
+                    created_at_ns INTEGER NOT NULL DEFAULT 0,
+                    last_accessed_at_ns INTEGER NOT NULL DEFAULT 0,
                     UNIQUE(content_sha256, space_id)
                 );
                 CREATE INDEX IF NOT EXISTS embeddings_space ON embeddings(space_id);
                 """
             )
+            self._migrate_timestamps(connection)
 
     @contextmanager
     def _connection(self, *, load_extension: bool = False):
@@ -296,8 +607,8 @@ class PersistentSemanticArtifactStore:
             """
             INSERT INTO embedding_spaces(
                 id, backend_id, model, representation, preprocessing,
-                segment_policy, dimension, vector_table
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                segment_policy, dimension, vector_table, created_at_ns
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 key.space_id,
@@ -308,9 +619,26 @@ class PersistentSemanticArtifactStore:
                 key.segment_policy,
                 dimension,
                 vector_table,
+                self._clock_ns(),
             ),
         )
         return vector_table
+
+    def _migrate_timestamps(self, connection: sqlite3.Connection) -> None:
+        now = self._clock_ns()
+        for table, column in (
+            ("embedding_spaces", "created_at_ns"),
+            ("embeddings", "created_at_ns"),
+            ("embeddings", "last_accessed_at_ns"),
+        ):
+            columns = {
+                row[1] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            if column not in columns:
+                connection.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"
+                )
+            connection.execute(f"UPDATE {table} SET {column} = ? WHERE {column} = 0", (now,))
 
     def _upsert_vector_location(
         self,
@@ -334,6 +662,27 @@ def _validate_vector(values: list[float]) -> list[float]:
     if not vector or not all(math.isfinite(value) for value in vector):
         raise ValueError("Embedding must contain finite values")
     return vector
+
+
+def _prune_filters(
+    *,
+    backend_id: str | None,
+    model: str | None,
+    representation: str | None,
+    preprocessing: str | None,
+    segment_policy: str | None,
+    created_before_ns: int | None,
+    last_accessed_before_ns: int | None,
+) -> dict[str, object]:
+    return {
+        "backend_id": backend_id,
+        "model": model,
+        "representation": representation,
+        "preprocessing": preprocessing,
+        "segment_policy": segment_policy,
+        "created_before_ns": created_before_ns,
+        "last_accessed_before_ns": last_accessed_before_ns,
+    }
 
 
 def _pack_vector(values: list[float]) -> bytes:

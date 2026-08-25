@@ -121,3 +121,30 @@ def test_persistent_l2_cache_survives_l1_restart(tmp_path) -> None:
     restarted = EmbeddingInferenceCache(capacity=2, persistent=persistent)
     assert restarted.get_or_compute(artifact_key, compute, audio_path=audio).status == "hit"
     assert calls == 1
+
+
+def test_l1_hits_refresh_persistent_last_access_time(tmp_path) -> None:
+    now = 100
+    audio = tmp_path / "one.wav"
+    audio.write_bytes(b"one")
+    stat = audio.stat()
+    persistent = PersistentSemanticArtifactStore(
+        tmp_path / "semantic.sqlite3",
+        enable_vector_extension=False,
+        clock_ns=lambda: now,
+    )
+    artifact_key = EmbeddingCacheKey(
+        backend_id="local-muq-mulan",
+        model="model-v1",
+        representation="mean-v1",
+        relative_path="one.wav",
+        size=stat.st_size,
+        modified_time_ns=stat.st_mtime_ns,
+        library_id="library-a",
+    )
+    cache = EmbeddingInferenceCache(capacity=2, persistent=persistent)
+    cache.get_or_compute(artifact_key, lambda: [1.0, 0.0], audio_path=audio)
+    now = 200
+
+    assert cache.get_or_compute(artifact_key, lambda: [0.0, 1.0], audio_path=audio).status == "hit"
+    assert persistent.inventory().spaces[0].last_accessed_at_ns == 200

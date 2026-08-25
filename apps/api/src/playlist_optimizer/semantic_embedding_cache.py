@@ -76,6 +76,13 @@ class EmbeddingInferenceCache:
     def search_engine(self) -> str:
         return self.persistent.search_engine if self.persistent is not None else "unavailable"
 
+    def clear(self) -> int:
+        """Clear process-local values after persistent cache maintenance."""
+        with self._lock:
+            cleared = len(self._entries)
+            self._entries.clear()
+            return cleared
+
     def nearest(
         self, key: EmbeddingCacheKey, query: list[float], *, limit: int
     ) -> list[SemanticNeighbor]:
@@ -90,19 +97,32 @@ class EmbeddingInferenceCache:
         *,
         audio_path: Path | None = None,
     ) -> EmbeddingCacheLookup:
+        cached_values: tuple[float, ...] | None = None
         with self._lock:
             cached = self._entries.get(key)
             if cached is not None:
                 self._entries.move_to_end(key)
-                return EmbeddingCacheLookup(values=list(cached), status="hit")
-            future = self._in_flight.get(key)
-            owner = future is None
-            if future is None:
-                future = Future()
-                self._in_flight[key] = future
+                cached_values = cached
+                future = None
+                owner = False
+            else:
+                future = self._in_flight.get(key)
+                owner = future is None
+                if future is None:
+                    future = Future()
+                    self._in_flight[key] = future
+
+        if cached_values is not None:
+            if self.persistent is not None and audio_path is not None:
+                with suppress(OSError, sqlite3.Error):
+                    self.persistent.touch(_artifact_key(key))
+            return EmbeddingCacheLookup(values=list(cached_values), status="hit")
 
         if not owner:
+            assert future is not None
             return EmbeddingCacheLookup(values=list(future.result()), status="deduplicated")
+
+        assert future is not None
 
         if self.persistent is not None and audio_path is not None:
             try:
