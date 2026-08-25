@@ -243,6 +243,20 @@ is unaffected.
 The initial external-library smoke test imported a 13-track M3U without skips and analyzed three full
 tracks in 67.9 seconds. See the [Essentia evaluation](docs/essentia-evaluation.md).
 
+### Semantic model setup
+
+The macOS app includes the CLAP, MuQ-MuLan, and MERT runtimes but does not put their roughly 9 GB
+of checkpoints in the release archive. In **Semantic Lab**, the one-time **Install local semantic
+models** action downloads exact pinned revisions into Flowset's Application Support directory.
+MuQ-MuLan and MERT require explicit confirmation of their CC-BY-NC-4.0 restrictions, and MERT
+separately requires approval to execute its pinned, checksummed checkpoint code.
+
+Provisioning records a verified manifest only after each backend's required files pass size and
+SHA-256 checks. Partial downloads remain unavailable. The installer then runs real generated-audio
+inference through CLAP, MuQ-MuLan, and MERT before reporting success; normal inference remains
+offline-only and reads only explicitly authorized local tracks. Browser development retains the
+operator commands `make setup-semantic-models` and `make test-semantic-models-smoke`.
+
 ## Local folders and playlist files
 
 The frontend defaults to a local-source workspace when `ESSENTIA_AUDIO_ROOT` is available. It

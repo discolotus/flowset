@@ -50,13 +50,16 @@ class _ConfiguredBackend:
         self.max_embedding_batch = max_embedding_batch
 
     def capabilities(self) -> SemanticBackendCapabilities:
-        checkpoint_ready = bool(self.checkpoint and self.checkpoint.exists())
+        checkpoint_exists = bool(self.checkpoint and self.checkpoint.exists())
+        checkpoint_ready = checkpoint_exists and self._provisioning_manifest().is_file()
         missing_runtime = [module for module in self.runtime_modules if find_spec(module) is None]
         available = checkpoint_ready and not missing_runtime
         if missing_runtime:
             detail = f"Install the optional runtime ({', '.join(missing_runtime)} missing)."
         elif checkpoint_ready:
             detail = "Explicit local checkpoint and runtime configured."
+        elif checkpoint_exists:
+            detail = "Semantic model provisioning is incomplete; its verified manifest is absent."
         else:
             detail = f"Set {self.checkpoint_setting} to an existing local checkpoint."
         return SemanticBackendCapabilities(
@@ -73,6 +76,11 @@ class _ConfiguredBackend:
             max_embedding_batch=self.max_embedding_batch,
             default_representation=self.default_representation,
         )
+
+    def _provisioning_manifest(self) -> Path:
+        assert self.checkpoint is not None
+        directory = self.checkpoint if self.checkpoint.is_dir() else self.checkpoint.parent
+        return directory / "manifest.json"
 
     def _require_checkpoint(self) -> Path:
         if not self.checkpoint or not self.checkpoint.exists():

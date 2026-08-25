@@ -109,11 +109,15 @@ The release is not complete until a fresh cask installation proves all of the fo
 2. `/Applications/Flowset.app` passes `codesign --verify --deep --strict`.
 3. The packaged API handles health, capabilities, recipe preview, local-folder import, ranged audio
    preview, and traversal rejection over its real loopback HTTP boundary.
-4. The real FFmpeg smoke tests export MP3 from MP3, FLAC, Opus, and DFF inputs and transcode Opus
+4. `playlist-optimizer-api --semantic-runtime-status` confirms that CLAP, MuQ-MuLan, and MERT
+   runtime modules are present. On the designated non-commercial model-validation machine, use the
+   in-app consent flow and retain the three successful real-inference smoke results.
+5. The real FFmpeg smoke tests export MP3 from MP3, FLAC, Opus, and DFF inputs and transcode Opus
    to both FLAC and MP3 for Rekordbox compatibility.
-5. FFprobe and Mutagen confirm audio validity and canonical title, artist, album, disc, and track
+6. FFprobe and Mutagen confirm audio validity and canonical title, artist, album, disc, and track
    tags in the exported files.
-6. The app is uninstalled and reinstalled once to catch hidden local-build dependencies.
+7. The app is uninstalled and reinstalled once to catch hidden local-build dependencies. Semantic
+   checkpoints remain in Application Support unless the user explicitly removes that model data.
 
 Record the exact release URL, cask commit, Homebrew output, test counts, and any Gatekeeper
 exception in the GitHub release notes.

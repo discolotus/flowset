@@ -13,6 +13,7 @@ use tauri_plugin_shell::ShellExt;
 mod apple_music;
 mod mp3_export;
 mod rekordbox_export;
+mod semantic_models;
 mod spotify;
 mod workspace_state;
 
@@ -334,12 +335,15 @@ pub fn run() {
             apple_music::import_apple_music_playlists,
             mp3_export::export_playlists_as_mp3,
             rekordbox_export::write_rekordbox_compatible_bundle,
+            semantic_models::provision_semantic_models,
             spotify::open_spotify_authorization,
             workspace_state::load_workspace_state,
             workspace_state::save_workspace_state
         ])
         .setup(|app| {
             let model_dir = bundled_essentia_model_dir(app)?;
+            let semantic_paths =
+                semantic_models::app_model_paths(app.handle()).map_err(io::Error::other)?;
             let sidecar = app
                 .shell()
                 .sidecar("playlist-optimizer-api")?
@@ -356,7 +360,10 @@ pub fn run() {
                     "SPOTIFY_REDIRECT_URI",
                     "http://127.0.0.1:8001/api/v1/spotify/auth/callback",
                 )
-                .env("ESSENTIA_MODEL_DIR", &model_dir);
+                .env("ESSENTIA_MODEL_DIR", &model_dir)
+                .env("CLAP_CHECKPOINT", &semantic_paths.clap)
+                .env("MUQ_MULAN_CHECKPOINT", &semantic_paths.muq_mulan)
+                .env("MERT_CHECKPOINT", &semantic_paths.mert);
             let (_events, child) = sidecar.spawn()?;
             *app.state::<BackendProcess>()
                 .0

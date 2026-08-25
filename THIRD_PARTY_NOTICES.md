@@ -5,7 +5,7 @@ preview also contains third-party components whose licenses continue to apply.
 
 ## Optional local CLAP semantic ranking
 
-Flowset does not bundle CLAP software or model weights. The explicit setup command downloads the
+The macOS preview bundles the CLAP runtime but not model weights. The explicit setup action downloads the
 pinned `lukewys/laion_clap` `630k-audioset-best.pt` checkpoint, whose model card declares CC0-1.0,
 and its required tokenizer/encoder artifacts. Operators must still review the selected package and
 transitive dependency terms.
@@ -15,7 +15,7 @@ transitive dependency terms.
 
 ## Optional local MuQ-MuLan and MERT experiments
 
-Flowset bundles neither MuQ-MuLan nor MERT software, runtime dependencies, nor model weights. Their
+The macOS preview bundles the MuQ-MuLan and MERT runtime software, but not their model weights. Their
 explicit setup commands download pinned artifacts only after the operator accepts the applicable
 restrictions. MuQ code is MIT licensed; published MuQ and MuQ-MuLan weights are CC-BY-NC-4.0. MERT
 weights are also CC-BY-NC-4.0. Operators must review all applicable code, dataset, and checkpoint

@@ -469,6 +469,40 @@ def test_checkpoint_without_required_runtime_is_not_available(tmp_path: Path, mo
     assert "laion_clap missing" in (capabilities.detail or "")
 
 
+def test_clap_checkpoint_is_unavailable_until_provisioning_manifest_exists(
+    tmp_path: Path, monkeypatch
+) -> None:
+    checkpoint = tmp_path / "clap" / "630k-audioset-best.pt"
+    checkpoint.parent.mkdir()
+    checkpoint.write_bytes(b"partial checkpoint")
+    monkeypatch.setattr("playlist_optimizer.semantic.find_spec", lambda _module: object())
+
+    incomplete = LocalClapBackend(checkpoint).capabilities()
+
+    assert incomplete.available is False
+    assert "provisioning" in (incomplete.detail or "").casefold()
+    (checkpoint.parent / "manifest.json").write_text("{}", encoding="utf-8")
+    complete = LocalClapBackend(checkpoint).capabilities()
+    assert complete.available is True
+
+
+@pytest.mark.parametrize("backend_class", [LocalMuqMulanBackend, LocalMertBackend])
+def test_directory_checkpoint_is_unavailable_until_provisioning_manifest_exists(
+    backend_class, tmp_path: Path, monkeypatch
+) -> None:
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    monkeypatch.setattr("playlist_optimizer.semantic.find_spec", lambda _module: object())
+
+    incomplete = backend_class(checkpoint).capabilities()
+
+    assert incomplete.available is False
+    assert "provisioning" in (incomplete.detail or "").casefold()
+    (checkpoint / "manifest.json").write_text("{}", encoding="utf-8")
+    complete = backend_class(checkpoint).capabilities()
+    assert complete.available is True
+
+
 def test_muq_rank_loads_one_eval_model_offline_and_prefers_upstream_similarity(
     tmp_path: Path, monkeypatch
 ) -> None:
