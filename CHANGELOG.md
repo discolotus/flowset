@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.0-preview.15] - 2026-08-25
+
+- Ship CLAP, MuQ-MuLan, and MERT runtime support in the macOS sidecar and add an explicit-consent
+  desktop installer for their pinned, checksum-verified model assets.
+- Store semantic checkpoints under Flowset's Application Support directory, keep partial downloads
+  unavailable, and activate the models only after all three pass real generated-audio inference.
+- Preserve the non-commercial-weight and trusted MERT code gates while making Semantic Lab setup
+  actionable from the deployed desktop app.
+
 ## [0.2.0-preview.14] - 2026-08-22
 
 - Migrate browser and native workspace history to a bounded schema v2 that restores recent

@@ -9,9 +9,10 @@ Users want both open-ended text-to-music ranking and musically useful similarity
 ## Decision
 
 - Semantic analysis is a typed provider boundary separate from catalog metadata and musical-feature providers.
-- Local CLAP is disabled unless `CLAP_CHECKPOINT` is explicitly set. Flowset does not download or redistribute checkpoints.
-- MuQ-MuLan is disabled unless `MUQ_MULAN_CHECKPOINT` points to an explicit local checkpoint. It supports text similarity and bounded embedding extraction.
-- MERT is disabled unless `MERT_CHECKPOINT` points to an explicit local checkpoint. MERT does not produce text-label scores; cosine similarity to a selected reference track provides its deterministic recipe score.
+- Local CLAP is disabled unless `CLAP_CHECKPOINT` points to a completed, manifest-backed local checkpoint.
+- MuQ-MuLan is disabled unless `MUQ_MULAN_CHECKPOINT` points to a completed, manifest-backed local checkpoint. It supports text similarity and bounded embedding extraction.
+- MERT is disabled unless `MERT_CHECKPOINT` points to a completed, manifest-backed local checkpoint. MERT does not produce text-label scores; cosine similarity to a selected reference track provides its deterministic recipe score.
+- The desktop sidecar bundles the three optional runtimes but not their multi-gigabyte checkpoints. The desktop setup action downloads exact pinned revisions into Application Support only after explicit license and trusted-code consent, verifies their sizes and checksums, and runs real inference for all three before reporting success.
 - The HTTP ranking surface is loopback-only, accepts at most the advertised track/label bounds, and resolves only relative paths beneath `CLAP_AUDIO_ROOT` (falling back to `ESSENTIA_AUDIO_ROOT`). Absolute paths, traversal, missing files, and directories are rejected.
 - Labels are whitespace-normalized and case-folded for identity while retaining a cleaned display label. Score keys have the form `semantic:<backend>:<model>:<normalized-label>`.
 - Each score carries backend/model provenance. Missing results remain explicit and tracks remain inspectable.
@@ -26,7 +27,7 @@ Users want both open-ended text-to-music ranking and musically useful similarity
 
 ## Setup
 
-Install only the optional runtime needed, obtain its checkpoint separately, review its license, and set the corresponding checkpoint path. Set `CLAP_AUDIO_ROOT` to the smallest directory containing authorized audio. The capabilities list reports each backend truthfully until configured. Runtime loaders are invoked lazily and in local-only mode; incompatible runtimes are rejected rather than allowed to fetch weights.
+In the desktop app, use Semantic Lab's one-time setup action and keep the app open while the pinned assets download and verify. Browser/source development can install only the optional runtime needed, obtain its checkpoint with the explicit setup command, review its license, and set the corresponding checkpoint path. Set `CLAP_AUDIO_ROOT` to the smallest directory containing authorized audio. The capabilities list reports each backend truthfully until configured. Runtime loaders are invoked lazily and in local-only mode; incompatible runtimes are rejected rather than allowed to fetch weights.
 
 ## Security and privacy
 
@@ -39,4 +40,4 @@ being downloaded implicitly.
 
 ## Licensing
 
-Flowset's MIT license does not grant rights to CLAP, MuQ-MuLan, or MERT code, model weights, training data, or analyzed audio. No optional package or checkpoint is bundled. Operators are responsible for reviewing dependency and checkpoint licenses and for having permission to analyze their audio.
+Flowset's MIT license does not grant rights to CLAP, MuQ-MuLan, or MERT code, model weights, training data, or analyzed audio. The desktop package contains the optional runtime software and its applicable notices, but no semantic checkpoint. Operators explicitly request the pinned checkpoints from their upstream hosts and remain responsible for reviewing dependency and checkpoint licenses and for having permission to analyze their audio.

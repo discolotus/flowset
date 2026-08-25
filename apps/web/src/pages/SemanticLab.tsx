@@ -8,6 +8,7 @@ import { SemanticPromptDiagnostics } from "../components/SemanticPromptDiagnosti
 import { SemanticRunComparison } from "../components/SemanticRunComparison";
 import { SemanticScoreMatrix } from "../components/SemanticScoreMatrix";
 import { getSemanticCapabilities, localAudioPreviewUrl, rankSemanticAudio, rankSemanticReference } from "../lib/api";
+import { canProvisionSemanticModels, provisionSemanticModels } from "../lib/semanticModelSetup";
 import { deriveSemanticContrast } from "../lib/semantic/contrast";
 import { normalizeSemanticPrompt, validateSemanticPrompts } from "../lib/semantic/prompts";
 import { createReferenceRankingRun, createTextRankingRun, fingerprintTrackIds, rememberSemanticRun } from "../lib/semantic/runs";
@@ -39,6 +40,10 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
   const [status, setStatus] = useState("Checking local semantic backends…");
   const [referenceStatus, setReferenceStatus] = useState("Checking MERT reference capabilities…");
   const [busy, setBusy] = useState(false);
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [acceptRestrictedWeights, setAcceptRestrictedWeights] = useState(false);
+  const [acceptTrustedCode, setAcceptTrustedCode] = useState(false);
+  const [setupStatus, setSetupStatus] = useState("");
 
   useEffect(() => {
     getSemanticCapabilities().then((items) => {
@@ -129,6 +134,26 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
   }, [activeRun, sortDirection]);
   const oversized = Boolean(backend && selectedTracks.length > backend.max_tracks);
   const referenceOversized = Boolean(referenceBackend && selectedTracks.length > referenceBackend.max_tracks);
+  const semanticSetupAvailable = canProvisionSemanticModels() && backends.some(({ available }) => !available);
+
+  async function installSemanticModels() {
+    setSetupBusy(true);
+    setSetupStatus("Downloading pinned semantic models and running real inference checks. Keep Flowset open; this can take a while.");
+    try {
+      const result = await provisionSemanticModels({ acceptRestrictedWeights, acceptTrustedCode });
+      const refreshed = await getSemanticCapabilities();
+      setBackends(refreshed);
+      setSetupStatus(result);
+      const firstText = refreshed.find((item) => item.available && item.capabilities.includes("text_similarity"));
+      const firstReference = refreshed.find((item) => item.available && item.capabilities.includes("reference_similarity"));
+      if (firstText) setBackendId(firstText.id);
+      if (firstReference) setReferenceBackendId(firstReference.id);
+    } catch (reason) {
+      setSetupStatus(reason instanceof Error ? reason.message : "Semantic model setup failed.");
+    } finally {
+      setSetupBusy(false);
+    }
+  }
   const staleSource = Boolean(activeRun && activeRun.sourceTrackSetFingerprint !== fingerprintTrackIds(tracks.map(({ id }) => id)));
   const hasPromotableScores = selectedContrast
     ? selectedContrast.scoresByTrack.size > 0
@@ -219,6 +244,18 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
         {item.license_note && <p className="mt-2 text-[10px] text-amber-200">{item.license_note}</p>}
       </article>)}</div>
     </section>
+
+    {semanticSetupAvailable && <section className="rounded-lg border border-amber-300/30 bg-amber-200/[0.035] p-5" aria-labelledby="semantic-setup-heading">
+      <p className="eyebrow">One-time setup</p>
+      <h2 id="semantic-setup-heading" className="mt-2 font-display text-xl font-semibold">Install local semantic models</h2>
+      <p className="mt-2 max-w-3xl text-sm text-mist/65">Flowset will download checksum-pinned CLAP, MuQ-MuLan, and MERT assets into Application Support, then activate them only after all three pass generated-audio inference. Allow roughly 9 GB plus temporary download space.</p>
+      <div className="mt-4 grid gap-3 text-sm">
+        <label><input type="checkbox" checked={acceptRestrictedWeights} onChange={(event) => setAcceptRestrictedWeights(event.target.checked)} /> I confirm personal, non-commercial use and accept the CC-BY-NC-4.0 restrictions on MuQ-MuLan and MERT weights.</label>
+        <label><input type="checkbox" checked={acceptTrustedCode} onChange={(event) => setAcceptTrustedCode(event.target.checked)} /> I approve executing the pinned, checksummed MERT checkpoint code locally.</label>
+      </div>
+      <button type="button" className="primary-button mt-4" disabled={setupBusy || !acceptRestrictedWeights || !acceptTrustedCode} onClick={installSemanticModels}>{setupBusy ? "Installing and verifying…" : "Install CLAP, MuQ-MuLan, and MERT"}</button>
+      {setupStatus && <p role="status" className="mt-3 text-xs text-mist/60">{setupStatus}</p>}
+    </section>}
 
     <section className="rounded-lg border border-line p-5" aria-labelledby="experiment-heading">
       <h2 id="experiment-heading" className="font-display text-xl font-semibold">Text-ranking experiment</h2>

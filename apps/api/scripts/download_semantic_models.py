@@ -326,13 +326,34 @@ def download_mert(
     print(f"MERT ready: {destination}")
 
 
-def main() -> None:
+def _require_acceptance(
+    backend: str, *, accept_restricted_weights: bool, accept_trusted_code: bool
+) -> None:
+    if backend in {"all", "muq-mulan", "mert"} and not accept_restricted_weights:
+        raise SystemExit(
+            "MuQ-MuLan/MERT weights are CC-BY-NC-4.0. Re-run with "
+            "--accept-restricted-weights after confirming that non-commercial use is appropriate."
+        )
+    if backend in {"all", "mert"} and not accept_trusted_code:
+        raise SystemExit(
+            "MERT requires pinned checkpoint code. Re-run with --accept-trusted-code after "
+            "reviewing the model repository."
+        )
+
+
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("backend", choices=("all", "clap", "muq-mulan", "mert"))
     parser.add_argument("--output", type=Path, default=Path(".models/semantic"))
     parser.add_argument("--accept-restricted-weights", action="store_true")
     parser.add_argument("--accept-trusted-code", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+
+    _require_acceptance(
+        args.backend,
+        accept_restricted_weights=args.accept_restricted_weights,
+        accept_trusted_code=args.accept_trusted_code,
+    )
 
     if args.backend in {"all", "clap"}:
         download_clap(args.output)

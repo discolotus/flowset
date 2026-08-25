@@ -65,6 +65,11 @@ resources="$app/Contents/Resources"
 [ -f "$resources/THIRD_PARTY_NOTICES.md" ]
 [ -f "$resources/licenses/ESSENTIA-AGPL-3.0.txt" ]
 
+semantic_runtime_status=$("$sidecar" --semantic-runtime-status) || {
+  echo "packaged sidecar is missing a semantic runtime: $semantic_runtime_status" >&2
+  exit 1
+}
+
 bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$info")
 minimum_system=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$info")
 
@@ -116,3 +121,4 @@ echo "validated: $app"
 echo "bundle identifier: $bundle_id"
 echo "architectures: main=$main_archs sidecar=$sidecar_archs"
 echo "Essentia model artifacts: $model_count"
+echo "Semantic runtimes: $semantic_runtime_status"

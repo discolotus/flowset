@@ -67,6 +67,27 @@ it("searches readable MERT references, previews locally, and inspects neighbors 
   expect(onPromote).toHaveBeenCalledOnce();
 });
 
+it("requires explicit model-license and trusted-code consent before desktop provisioning", async () => {
+  vi.stubGlobal("__TAURI_INTERNALS__", {});
+  vi.stubGlobal("fetch", vi.fn(async () => ({
+    ok: true,
+    json: async () => [
+      { ...backend, model: "unconfigured", available: false },
+      { ...mertBackend, model: "unconfigured", available: false },
+    ],
+  })));
+  const user = userEvent.setup();
+  render(<SemanticLab tracks={[]} audioPaths={{}} runs={[]} onRunsChange={vi.fn()} onPromote={vi.fn(() => true)} />);
+
+  const install = await screen.findByRole("button", { name: "Install CLAP, MuQ-MuLan, and MERT" });
+  expect(install).toHaveProperty("disabled", true);
+  await user.click(screen.getByRole("checkbox", { name: /personal, non-commercial use/ }));
+  expect(install).toHaveProperty("disabled", true);
+  await user.click(screen.getByRole("checkbox", { name: /pinned, checksummed MERT checkpoint code/ }));
+  expect(install).toHaveProperty("disabled", false);
+  expect(screen.getByText(/roughly 9 GB/)).not.toBeNull();
+});
+
 it("submits one bounded multi-prompt request and promotes only the selected raw score", async () => {
   const user = userEvent.setup();
   const onRunsChange = vi.fn();
