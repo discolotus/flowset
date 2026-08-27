@@ -16,6 +16,7 @@ import type { SemanticExperimentRunV1, SemanticPromotion, SemanticRecipeScope } 
 import type { SemanticBackendCapabilities, Track } from "../lib/types";
 
 const ALL_SCOPES: SemanticRecipeScope[] = ["distribution", "split", "subgroup", "sort"];
+const representationKey = (representation: { layer: string; pooling: string; segment: string }) => JSON.stringify(representation);
 
 export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote }: {
   tracks: readonly Track[];
@@ -30,6 +31,7 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
   const [promptRows, setPromptRows] = useState<readonly SemanticPromptRow[]>([{ id: "prompt-initial", value: "" }]);
   const [referenceBackendId, setReferenceBackendId] = useState("");
   const [referenceTrackId, setReferenceTrackId] = useState("");
+  const [referenceRepresentationKey, setReferenceRepresentationKey] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeRunId, setActiveRunId] = useState(runs[0]?.id ?? "");
   const [selectedScoreKey, setSelectedScoreKey] = useState("");
@@ -84,6 +86,10 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
 
   const backend = backends.find(({ id }) => id === backendId);
   const referenceBackend = backends.find(({ id }) => id === referenceBackendId);
+  const referenceRepresentations = referenceBackend?.supported_representations ?? [];
+  const selectedReferenceRepresentation = referenceRepresentations.find((item) => representationKey(item) === referenceRepresentationKey)
+    ?? referenceRepresentations.find((item) => representationKey(item) === representationKey(referenceBackend?.default_representation ?? { layer: "", pooling: "", segment: "" }))
+    ?? referenceRepresentations[0];
   const selectedTracks = authorizedTracks.filter(({ id }) => selectedIds.has(id));
   const activeRun = runs.find(({ id }) => id === activeRunId) ?? runs[0];
   const promptValidation = validateSemanticPrompts(promptRows.map(({ value }) => value), backend?.max_labels ?? 1);
@@ -188,7 +194,7 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
 
   async function runReferenceExperiment() {
     const referenceTrack = selectedTracks.find(({ id }) => id === referenceTrackId);
-    if (!referenceBackend || !referenceTrack || !selectedTracks.length || referenceOversized) return;
+    if (!referenceBackend || !referenceTrack || !selectedReferenceRepresentation || !selectedTracks.length || referenceOversized) return;
     setBusy(true);
     const createdAt = new Date().toISOString();
     try {
@@ -196,6 +202,7 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
         backendId: referenceBackend.id,
         referenceTrackId: referenceTrack.id,
         audioPaths: Object.fromEntries(selectedTracks.map(({ id }) => [id, audioPaths[id]])),
+        representation: selectedReferenceRepresentation,
       });
       const completedAt = new Date().toISOString();
       const run = createReferenceRankingRun({
@@ -288,13 +295,12 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
         </select>
       </label>
       <div className="mt-4"><ReferenceTrackPicker tracks={selectedTracks} audioPaths={audioPaths} value={referenceTrackId} onChange={setReferenceTrackId} /></div>
-      {referenceBackend?.default_representation ? <div className="mt-4 rounded border border-line bg-black/10 p-3 text-xs" aria-label="MERT representation identity">
-        <strong>Fixed representation for this slice</strong>
-        <p className="mt-1 text-mist/65">{referenceBackend.default_representation.layer} · {referenceBackend.default_representation.pooling} pooling · {referenceBackend.default_representation.segment.replaceAll("_", " ")} · {referenceBackend.model}</p>
-        <p className="mt-1 text-amber-200">Layer and pooling choices are not exposed yet; every result records this exact identity so future configurations cannot be silently mixed.</p>
-      </div> : <p className="mt-4 text-xs text-amber-200">This backend does not report a representation identity and cannot run the reference explorer safely.</p>}
+      {selectedReferenceRepresentation ? <div className="mt-4 rounded border border-line bg-black/10 p-3 text-xs" aria-label="MERT representation identity">
+        <label className="font-semibold">Representation<select aria-label="MERT representation" className="mt-1 w-full rounded border border-line bg-ink p-2" value={representationKey(selectedReferenceRepresentation)} onChange={(event) => setReferenceRepresentationKey(event.target.value)}>{referenceRepresentations.map((item) => <option key={representationKey(item)} value={representationKey(item)}>{item.layer} · {item.pooling} pooling · {item.segment.replaceAll("_", " ")}</option>)}</select></label>
+        <p className="mt-2 text-mist/65">{referenceBackend?.model} · only backend-advertised representations are selectable and each result records the exact choice.</p>
+      </div> : <p className="mt-4 text-xs text-amber-200">This backend does not advertise a supported representation and cannot run the reference explorer safely.</p>}
       {referenceOversized && <p role="alert" className="mt-3 text-amber-200">Select at most {referenceBackend?.max_tracks} tracks for this backend.</p>}
-      <button type="button" className="primary-button mt-4" disabled={busy || !referenceBackend?.available || !referenceBackend.default_representation || !referenceTrackId || !selectedTracks.length || referenceOversized} onClick={runReferenceExperiment}>{busy ? "Running…" : "Inspect nearest neighbors"}</button>
+      <button type="button" className="primary-button mt-4" disabled={busy || !referenceBackend?.available || !selectedReferenceRepresentation || !referenceTrackId || !selectedTracks.length || referenceOversized} onClick={runReferenceExperiment}>{busy ? "Running…" : "Inspect nearest neighbors"}</button>
       <p role="status" className="mt-3 text-xs text-mist/60">{referenceStatus}</p>
     </section>
 

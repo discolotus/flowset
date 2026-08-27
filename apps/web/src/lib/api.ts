@@ -22,6 +22,7 @@ import type {
   SemanticBackendCapabilities,
   SemanticEmbeddingResponse,
   SemanticRankResponse,
+  SemanticRepresentationIdentity,
 } from "./types";
 import type { SplitFactor } from "./factorGrid";
 
@@ -199,10 +200,11 @@ export function rankSemanticReference(input: {
   backendId: string;
   referenceTrackId: string;
   audioPaths: Record<string, string>;
+  representation: SemanticRepresentationIdentity;
 }): Promise<SemanticRankResponse> {
   return request<SemanticRankResponse>("/api/v1/semantic/reference-rank", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ backend_id: input.backendId, reference_track_id: input.referenceTrackId, audio_paths: input.audioPaths }),
+    body: JSON.stringify({ backend_id: input.backendId, reference_track_id: input.referenceTrackId, audio_paths: input.audioPaths, representation: input.representation }),
   });
 }
 

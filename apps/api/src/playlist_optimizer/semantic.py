@@ -36,6 +36,7 @@ class _ConfiguredBackend:
     runtime_modules: tuple[str, ...]
     embedding_representation: str | None = None
     default_representation: SemanticRepresentationIdentity | None = None
+    supported_representations: tuple[SemanticRepresentationIdentity, ...] = ()
 
     def __init__(
         self,
@@ -75,6 +76,7 @@ class _ConfiguredBackend:
             embedding_representation=self.embedding_representation,
             max_embedding_batch=self.max_embedding_batch,
             default_representation=self.default_representation,
+            supported_representations=list(self.supported_representations),
         )
 
     def _provisioning_manifest(self) -> Path:
@@ -135,9 +137,10 @@ def _enable_huggingface_offline(cache_dir: Path | None = None) -> None:
 class LocalClapBackend(_ConfiguredBackend):
     backend_id = "local-clap"
     display_name = "Local CLAP"
-    capability_names = ["text_similarity"]
+    capability_names = ["text_similarity", "embedding_extraction"]
     checkpoint_setting = "CLAP_CHECKPOINT"
     runtime_modules = ("laion_clap",)
+    embedding_representation = "clap-htsat-tiny-model-native-v1"
     license_note = (
         "CLAP software and checkpoint licenses are operator-supplied and must be reviewed."
     )
@@ -164,11 +167,12 @@ class LocalClapBackend(_ConfiguredBackend):
         return model
 
     def rank(self, audio_paths: list[Path], labels: list[str]) -> list[SemanticRankResult]:
-        model = self._model
-        text_rows = _tolist(model.get_text_embedding(labels, use_tensor=True))
-        audio_rows = _tolist(
-            model.get_audio_embedding_from_filelist([str(path) for path in audio_paths])
-        )
+        return self.rank_embeddings(audio_paths, self.embed(audio_paths), labels)
+
+    def rank_embeddings(
+        self, audio_paths: list[Path], audio_rows: list[list[float]], labels: list[str]
+    ) -> list[SemanticRankResult]:
+        text_rows = _tolist(self._model.get_text_embedding(labels, use_tensor=True))
         rows = [
             [cosine_similarity(audio_row, text_row) for text_row in text_rows]
             for audio_row in audio_rows
@@ -182,7 +186,12 @@ class LocalClapBackend(_ConfiguredBackend):
         ]
 
     def embed(self, audio_paths: list[Path]) -> list[list[float]]:
-        raise RuntimeError("CLAP embedding extraction is not exposed")
+        rows = _tolist(
+            self._model.get_audio_embedding_from_filelist([str(path) for path in audio_paths])
+        )
+        rows = [[float(value) for value in row] for row in rows]
+        _require_finite_rows(rows, "CLAP embedding")
+        return rows
 
 
 class LocalMuqMulanBackend(_ConfiguredBackend):
@@ -244,6 +253,12 @@ class LocalMuqMulanBackend(_ConfiguredBackend):
     def rank(self, audio_paths: list[Path], labels: list[str]) -> list[SemanticRankResult]:
         model = self._model
         audio = self._embed_with_model(model, audio_paths)
+        return self.rank_embeddings(audio_paths, audio, labels)
+
+    def rank_embeddings(
+        self, audio_paths: list[Path], audio: list[list[float]], labels: list[str]
+    ) -> list[SemanticRankResult]:
+        model = self._model
         try:
             import torch  # type: ignore[import-not-found]
         except ImportError as exc:
@@ -277,6 +292,7 @@ class LocalMertBackend(_ConfiguredBackend):
         pooling="mean",
         segment="whole_track",
     )
+    supported_representations = (default_representation,)
     license_note = (
         "Published MERT weights are CC-BY-NC-4.0 and are not bundled by Flowset; trusted local "
         "checkpoint code may execute. MERT is not used for text scoring."

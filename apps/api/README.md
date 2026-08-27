@@ -49,14 +49,26 @@ semantic audio root. Each backend advertises a bounded `max_embedding_batch`, a 
 model identity, and an embedding representation identity. The web client acquires larger selected
 sets in sequential chunks and rejects chunks whose model, representation, or dimension differs.
 
-Successful per-track embeddings are reused from a bounded process-local LRU cache. A cache key
-contains the backend, model revision, representation, authorized root-relative path, file size,
-and nanosecond modification time. Concurrent requests for the same key share one inference.
-Responses report per-track `hit`, `miss`, or `deduplicated` state plus aggregate cache counts;
-decode and malformed-vector failures stay visible beside the affected track. The cache is never
-written to disk, and raw vectors are not added to tracks, workspace state, browser storage,
-playlist exports, or remote calls. `SEMANTIC_EMBEDDING_CACHE_ENTRIES` controls the LRU bound and
-defaults to 128.
+Successful per-track embeddings are reused from a bounded process-local LRU cache. Concurrent
+requests for the same key share one inference. Responses report per-track `hit`, `miss`, or
+`deduplicated` state plus aggregate cache counts; decode and malformed-vector failures stay visible
+beside the affected track. Raw vectors are returned only by the explicit loopback embedding API and
+are not added to tracks, workspace state, browser storage, playlist exports, or remote calls.
+`SEMANTIC_EMBEDDING_CACHE_ENTRIES` controls the LRU bound and defaults to 128.
+
+The LRU is backed by a content-addressed SQLite artifact index. It persists CLAP, MuQ-MuLan, and
+MERT embeddings across API restarts and reuses identical content after a rename or across multiple
+playlist locations. Embedding spaces include the backend, checkpoint-derived model identity,
+representation, preprocessing version, segment policy, and dimension. Raw vectors remain local to
+the API and are still excluded from workspace state, browser storage, playlists, and exports.
+
+The source API defaults to
+`~/Library/Application Support/Flowset/semantic-index-v1.sqlite3` on macOS, while the desktop app
+places it in its bundle-specific Application Support directory. Set `SEMANTIC_CACHE_PATH` to place
+a portable index on an external volume. Flowset uses `sqlite-vec`
+cosine KNN tables when the extension can load and reports `python-exact` when it falls back to its
+portable exact search. `POST /api/v1/semantic/neighbors` searches all compatible cached vectors in
+the authorized library without rerunning inference for previously indexed tracks.
 
 ## Audio-feature providers
 

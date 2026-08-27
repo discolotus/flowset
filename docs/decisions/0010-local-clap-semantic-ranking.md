@@ -2,6 +2,9 @@
 
 Status: accepted
 
+Persistence amendment: ADR 0012 supersedes the process-local-only embedding-cache restriction.
+The privacy and explicit-promotion boundaries in this decision remain active.
+
 ## Context
 
 Users want both open-ended text-to-music ranking and musically useful similarity without pretending every embedding model understands language. A semantic score is meaningful only with its query or reference and the exact backend/model that produced it.

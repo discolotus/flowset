@@ -1,5 +1,7 @@
 import math
 import os
+import sqlite3
+from datetime import UTC, datetime
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Annotated
@@ -37,10 +39,17 @@ from playlist_optimizer.models import (
     RecipePreviewRequest,
     RecipePreviewResponse,
     SemanticBackendCapabilities,
+    SemanticCachePruneRequest,
+    SemanticCachePruneResponse,
+    SemanticCacheSpaceStatus,
+    SemanticCacheStatusResponse,
     SemanticEmbedding,
     SemanticEmbeddingCacheMetadata,
     SemanticEmbeddingRequest,
     SemanticEmbeddingResponse,
+    SemanticNeighborMatch,
+    SemanticNeighborRequest,
+    SemanticNeighborResponse,
     SemanticRankedScore,
     SemanticRankRequest,
     SemanticRankResponse,
@@ -66,6 +75,7 @@ from playlist_optimizer.semantic_embedding_cache import (
     EmbeddingCacheKey,
     EmbeddingInferenceCache,
     get_semantic_embedding_cache,
+    semantic_library_id,
 )
 from playlist_optimizer.spotify import SpotifyService, get_spotify_service
 
@@ -134,6 +144,7 @@ def rank_semantic_audio(
     settings: Annotated[Settings, Depends(get_settings)],
     backend: Annotated[SemanticBackend, Depends(get_semantic_backend)],
     registry: Annotated[SemanticBackendRegistry, Depends(get_semantic_registry)],
+    cache: Annotated[EmbeddingInferenceCache, Depends(get_semantic_embedding_cache)],
 ) -> SemanticRankResponse:
     _require_loopback(http_request)
     if payload.backend_id != "local-clap":
@@ -181,7 +192,14 @@ def rank_semantic_audio(
         for normalized, label in requested_labels.items()
     }
     try:
-        ranked = backend.rank(paths, labels)
+        rank_embeddings = getattr(backend, "rank_embeddings", None)
+        if callable(rank_embeddings) and "embedding_extraction" in capabilities.capabilities:
+            embeddings = _cached_backend_embeddings(
+                paths, root.resolve(), capabilities, backend, cache, settings
+            )
+            ranked = rank_embeddings(paths, embeddings, labels)
+        else:
+            ranked = backend.rank(paths, labels)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except (TypeError, ValueError) as exc:
@@ -246,6 +264,7 @@ def rank_semantic_reference(
     http_request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
     registry: Annotated[SemanticBackendRegistry, Depends(get_semantic_registry)],
+    cache: Annotated[EmbeddingInferenceCache, Depends(get_semantic_embedding_cache)],
 ) -> SemanticRankResponse:
     _require_loopback(http_request)
     backend = registry.get(payload.backend_id)
@@ -266,9 +285,22 @@ def rank_semantic_reference(
         raise HTTPException(
             status_code=422, detail="Reference track must be included in audio_paths"
         )
+    selected_representation = payload.representation or capabilities.default_representation
+    if (
+        selected_representation is None
+        or selected_representation not in capabilities.supported_representations
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Selected representation is not advertised by this backend",
+        )
     paths = _resolve_semantic_paths(payload.audio_paths, settings)
+    root = settings.semantic_audio_root or settings.clap_audio_root or settings.essentia_audio_root
+    assert root is not None
     try:
-        embeddings = backend.embed(paths)
+        embeddings = _cached_backend_embeddings(
+            paths, root.resolve(), capabilities, backend, cache, settings
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     if len(embeddings) != len(paths):
@@ -283,12 +315,12 @@ def rank_semantic_reference(
         capabilities.id,
         capabilities.model,
         label,
-        capabilities.default_representation,
+        selected_representation,
     )
     provenance = SemanticScoreProvenance(
         backend=capabilities.id,
         model=capabilities.model,
-        representation=capabilities.default_representation,
+        representation=selected_representation,
     )
     results = [
         SemanticTrackResult(
@@ -311,6 +343,7 @@ def rank_semantic_reference(
         score_key=key,
         score_keys_by_normalized_label={normalize_semantic_label(label): key},
         results=results,
+        representation=selected_representation,
     )
 
 
@@ -356,6 +389,7 @@ def extract_semantic_embeddings(
                 relative_path=path.relative_to(authorized_root).as_posix(),
                 size=stat.st_size,
                 modified_time_ns=stat.st_mtime_ns,
+                library_id=semantic_library_id(authorized_root),
             )
         except (OSError, ValueError):
             failed_track_ids.append(track_id)
@@ -382,7 +416,7 @@ def extract_semantic_embeddings(
             return rows[0]
 
         try:
-            lookup = cache.get_or_compute(key, compute)
+            lookup = cache.get_or_compute(key, compute, audio_path=path)
             row_dimension = len(lookup.values)
             if dimension is not None and row_dimension != dimension:
                 raise ValueError("Embedding dimension does not match the selected representation")
@@ -438,6 +472,173 @@ def extract_semantic_embeddings(
     )
 
 
+@router.post("/semantic/neighbors", response_model=SemanticNeighborResponse)
+def search_semantic_neighbors(
+    payload: SemanticNeighborRequest,
+    http_request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    registry: Annotated[SemanticBackendRegistry, Depends(get_semantic_registry)],
+    cache: Annotated[EmbeddingInferenceCache, Depends(get_semantic_embedding_cache)],
+) -> SemanticNeighborResponse:
+    _require_loopback(http_request)
+    backend = registry.get(payload.backend_id)
+    if backend is None:
+        raise HTTPException(status_code=404, detail="Semantic backend was not found")
+    capabilities = backend.capabilities()
+    if not capabilities.available:
+        raise HTTPException(
+            status_code=503, detail=capabilities.detail or "Semantic backend unavailable"
+        )
+    if "embedding_extraction" not in capabilities.capabilities:
+        raise HTTPException(status_code=422, detail="Selected backend does not expose embeddings")
+    root = settings.semantic_audio_root or settings.clap_audio_root or settings.essentia_audio_root
+    if root is None or not root.is_dir():
+        raise HTTPException(status_code=503, detail="No authorized local audio root is configured")
+    paths = _resolve_semantic_paths({"reference": payload.reference_audio_path}, settings)
+    try:
+        reference = _cached_backend_embeddings(
+            paths, root.resolve(), capabilities, backend, cache, settings
+        )[0]
+        stat = paths[0].stat()
+        representation = capabilities.embedding_representation or "default-audio-v1"
+        lookup_key = EmbeddingCacheKey(
+            backend_id=capabilities.id,
+            model=capabilities.model,
+            representation=representation,
+            relative_path=paths[0].relative_to(root.resolve()).as_posix(),
+            size=stat.st_size,
+            modified_time_ns=stat.st_mtime_ns,
+            library_id=semantic_library_id(root.resolve()),
+        )
+        matches = cache.nearest(lookup_key, reference, limit=payload.limit)
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail="Semantic neighbor search failed") from exc
+    return SemanticNeighborResponse(
+        backend=capabilities,
+        representation=representation,
+        search_engine=cache.search_engine,
+        matches=[
+            SemanticNeighborMatch(
+                relative_path=match.relative_path,
+                similarity=max(-1.0, min(1.0, match.similarity)),
+            )
+            for match in matches
+        ],
+    )
+
+
+@router.get("/semantic/cache", response_model=SemanticCacheStatusResponse)
+def semantic_cache_status(
+    http_request: Request,
+    cache: Annotated[EmbeddingInferenceCache, Depends(get_semantic_embedding_cache)],
+) -> SemanticCacheStatusResponse:
+    _require_loopback(http_request)
+    store = cache.persistent
+    if store is None:
+        return SemanticCacheStatusResponse(
+            persistent=False,
+            database_bytes=0,
+            location_count=0,
+            embedding_count=0,
+            l1_entries=cache.size,
+            l1_capacity=cache.capacity,
+            search_engine="unavailable",
+            spaces=[],
+        )
+    try:
+        inventory = store.inventory()
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Semantic cache inventory failed") from exc
+    return SemanticCacheStatusResponse(
+        persistent=True,
+        database_bytes=inventory.database_bytes,
+        location_count=inventory.location_count,
+        embedding_count=inventory.embedding_count,
+        l1_entries=cache.size,
+        l1_capacity=cache.capacity,
+        search_engine=inventory.search_engine,
+        spaces=[
+            SemanticCacheSpaceStatus(
+                space_id=space.space_id,
+                backend_id=space.backend_id,
+                model=space.model,
+                representation=space.representation,
+                preprocessing=space.preprocessing,
+                segment_policy=space.segment_policy,
+                dimension=space.dimension,
+                embedding_count=space.embedding_count,
+                vector_bytes=space.vector_bytes,
+                oldest_created_at=_datetime_from_ns(space.oldest_created_at_ns),
+                newest_created_at=_datetime_from_ns(space.newest_created_at_ns),
+                last_accessed_at=_datetime_from_ns(space.last_accessed_at_ns),
+            )
+            for space in inventory.spaces
+        ],
+    )
+
+
+@router.post("/semantic/cache/prune", response_model=SemanticCachePruneResponse)
+def prune_semantic_cache(
+    payload: SemanticCachePruneRequest,
+    http_request: Request,
+    cache: Annotated[EmbeddingInferenceCache, Depends(get_semantic_embedding_cache)],
+) -> SemanticCachePruneResponse:
+    _require_loopback(http_request)
+    store = cache.persistent
+    if store is None:
+        raise HTTPException(status_code=503, detail="Persistent semantic cache is not configured")
+    filters = {
+        "backend_id": payload.backend_id,
+        "model": payload.model,
+        "representation": payload.representation,
+        "preprocessing": payload.preprocessing,
+        "segment_policy": payload.segment_policy,
+        "created_before_ns": _datetime_to_ns(payload.created_before),
+        "last_accessed_before_ns": _datetime_to_ns(payload.last_accessed_before),
+    }
+    try:
+        if payload.dry_run:
+            result = store.plan_prune(**filters)
+            cleared_l1_entries = 0
+        else:
+            result = store.prune(
+                confirmation_token=payload.confirmation_token or "",
+                remove_orphan_locations=payload.remove_orphan_locations,
+                compact=payload.compact,
+                **filters,
+            )
+            # L1 keys do not carry creation/access timestamps, so clear it in full to prevent
+            # deleted persistent values from surviving cache maintenance in this process.
+            cleared_l1_entries = cache.clear()
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Semantic cache prune failed") from exc
+    return SemanticCachePruneResponse(
+        dry_run=payload.dry_run,
+        matched_embeddings=result.matched_embeddings,
+        matched_spaces=result.matched_spaces,
+        matched_vector_bytes=result.matched_vector_bytes,
+        deleted_embeddings=result.deleted_embeddings,
+        deleted_spaces=result.deleted_spaces,
+        deleted_locations=result.deleted_locations,
+        cleared_l1_entries=cleared_l1_entries,
+        confirmation_token=result.confirmation_token,
+    )
+
+
+def _datetime_from_ns(value: int | None) -> datetime | None:
+    if value is None:
+        return None
+    return datetime.fromtimestamp(value / 1_000_000_000, tz=UTC)
+
+
+def _datetime_to_ns(value: datetime | None) -> int | None:
+    if value is None:
+        return None
+    return int(value.timestamp() * 1_000_000_000)
+
+
 def _resolve_semantic_paths(audio_paths: dict[str, str], settings: Settings) -> list[Path]:
     root = settings.semantic_audio_root or settings.clap_audio_root or settings.essentia_audio_root
     if root is None or not root.is_dir():
@@ -470,6 +671,44 @@ def _validate_embeddings(rows: list[list[float]], max_dimension: int) -> int:
     ):
         raise ValueError("Semantic backend returned non-finite embeddings")
     return dimension
+
+
+def _cached_backend_embeddings(
+    paths: list[Path],
+    authorized_root: Path,
+    capabilities: SemanticBackendCapabilities,
+    backend: SemanticBackend,
+    cache: EmbeddingInferenceCache,
+    settings: Settings,
+) -> list[list[float]]:
+    representation = capabilities.embedding_representation or "default-audio-v1"
+    rows: list[list[float]] = []
+    for path in paths:
+        stat = path.stat()
+        key = EmbeddingCacheKey(
+            backend_id=capabilities.id,
+            model=capabilities.model,
+            representation=representation,
+            relative_path=path.relative_to(authorized_root).as_posix(),
+            size=stat.st_size,
+            modified_time_ns=stat.st_mtime_ns,
+            library_id=semantic_library_id(authorized_root),
+        )
+
+        def compute(path: Path = path, expected_stat: os.stat_result = stat) -> list[float]:
+            embedded = backend.embed([path])
+            _validate_embeddings(embedded, settings.semantic_max_embedding_dimension)
+            current_stat = path.stat()
+            if (
+                current_stat.st_size != expected_stat.st_size
+                or current_stat.st_mtime_ns != expected_stat.st_mtime_ns
+            ):
+                raise RuntimeError("Audio changed during embedding inference")
+            return embedded[0]
+
+        rows.append(cache.get_or_compute(key, compute, audio_path=path).values)
+    _validate_embeddings(rows, settings.semantic_max_embedding_dimension)
+    return rows
 
 
 def _finite_similarity(left: list[float], right: list[float]) -> float:

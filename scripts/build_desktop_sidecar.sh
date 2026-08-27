@@ -26,6 +26,7 @@ PYINSTALLER_CONFIG_DIR="$project_root/apps/api/.pyinstaller" \
   --collect-all muq \
   --collect-all x_clip \
   --collect-all huggingface_hub \
+  --collect-all sqlite_vec \
   --collect-data transformers \
   --collect-submodules librosa \
   --collect-submodules transformers \

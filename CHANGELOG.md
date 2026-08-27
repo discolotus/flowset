@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.0-preview.16] - 2026-08-26
+
+- Persist CLAP, MuQ-MuLan, and MERT embeddings in a content-addressed, model-bound SQLite index
+  that survives restarts and accelerates compatible cosine searches with sqlite-vec.
+- Add loopback-only cache inventory, neighbor search, and preview-confirm pruning controls with
+  backend, model, representation, preprocessing, segment-policy, and timestamp filters.
+- Preserve explicit MERT representation identity from requests through persisted Semantic Lab
+  runs so incompatible embeddings and reference scores cannot silently mix.
+
 ## [0.2.0-preview.15] - 2026-08-25
 
 - Ship CLAP, MuQ-MuLan, and MERT runtime support in the macOS sidecar and add an explicit-consent

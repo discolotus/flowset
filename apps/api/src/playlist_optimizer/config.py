@@ -1,3 +1,4 @@
+import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -6,6 +7,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _API_ROOT = Path(__file__).resolve().parents[2]
 _SEMANTIC_MODEL_ROOT = _API_ROOT / ".models" / "semantic"
+
+
+def _default_semantic_cache_path() -> Path:
+    if sys.platform == "darwin":
+        return (
+            Path.home()
+            / "Library"
+            / "Application Support"
+            / "Flowset"
+            / "semantic-index-v1.sqlite3"
+        )
+    return Path.home() / ".local" / "share" / "flowset" / "semantic-index-v1.sqlite3"
 
 
 class Settings(BaseSettings):
@@ -35,6 +48,7 @@ class Settings(BaseSettings):
     semantic_max_embeddings: int = Field(default=20, ge=1, le=20)
     semantic_max_embedding_dimension: int = Field(default=4096, ge=1, le=8192)
     semantic_embedding_cache_entries: int = Field(default=128, ge=1, le=2000)
+    semantic_cache_path: Path | None = Field(default_factory=_default_semantic_cache_path)
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../../.env"),

@@ -518,6 +518,9 @@ class SemanticBackendCapabilities(BaseModel):
     embedding_representation: str | None = Field(default=None, min_length=1, max_length=200)
     max_embedding_batch: int = Field(default=20, ge=1, le=20)
     default_representation: SemanticRepresentationIdentity | None = None
+    supported_representations: list[SemanticRepresentationIdentity] = Field(
+        default_factory=list, max_length=32
+    )
 
 
 class SemanticRankedScore(BaseModel):
@@ -541,12 +544,14 @@ class SemanticRankResponse(BaseModel):
     score_keys_by_normalized_label: dict[str, str]
     results: list[SemanticTrackResult]
     missing_track_ids: list[str] = Field(default_factory=list)
+    representation: SemanticRepresentationIdentity | None = None
 
 
 class SemanticReferenceRankRequest(BaseModel):
     backend_id: str
     reference_track_id: str = Field(min_length=1, max_length=200)
     audio_paths: dict[str, str] = Field(min_length=1, max_length=100)
+    representation: SemanticRepresentationIdentity | None = None
 
 
 class SemanticEmbeddingRequest(BaseModel):
@@ -578,6 +583,106 @@ class SemanticEmbeddingResponse(BaseModel):
     embeddings: list[SemanticEmbedding] = Field(max_length=20)
     failed_track_ids: list[str] = Field(default_factory=list, max_length=20)
     cache: SemanticEmbeddingCacheMetadata
+
+
+class SemanticNeighborRequest(BaseModel):
+    backend_id: str
+    reference_audio_path: str = Field(min_length=1, max_length=1000)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class SemanticNeighborMatch(BaseModel):
+    relative_path: str
+    similarity: float = Field(ge=-1, le=1)
+
+
+class SemanticNeighborResponse(BaseModel):
+    backend: SemanticBackendCapabilities
+    representation: str
+    search_engine: Literal["sqlite-vec", "python-exact", "unavailable"]
+    matches: list[SemanticNeighborMatch] = Field(max_length=100)
+
+
+class SemanticCacheSpaceStatus(BaseModel):
+    space_id: str
+    backend_id: str
+    model: str
+    representation: str
+    preprocessing: str
+    segment_policy: str
+    dimension: int = Field(ge=1)
+    embedding_count: int = Field(ge=0)
+    vector_bytes: int = Field(ge=0)
+    oldest_created_at: datetime | None = None
+    newest_created_at: datetime | None = None
+    last_accessed_at: datetime | None = None
+
+
+class SemanticCacheStatusResponse(BaseModel):
+    persistent: bool
+    database_bytes: int = Field(ge=0)
+    location_count: int = Field(ge=0)
+    embedding_count: int = Field(ge=0)
+    l1_entries: int = Field(ge=0)
+    l1_capacity: int = Field(ge=1)
+    search_engine: Literal["sqlite-vec", "python-exact", "unavailable"]
+    spaces: list[SemanticCacheSpaceStatus]
+
+
+class SemanticCachePruneRequest(BaseModel):
+    backend_id: str | None = Field(default=None, min_length=1, max_length=200)
+    model: str | None = Field(default=None, min_length=1, max_length=500)
+    representation: str | None = Field(default=None, min_length=1, max_length=200)
+    preprocessing: str | None = Field(default=None, min_length=1, max_length=200)
+    segment_policy: str | None = Field(default=None, min_length=1, max_length=200)
+    created_before: datetime | None = None
+    last_accessed_before: datetime | None = None
+    all_spaces: bool = False
+    dry_run: bool = True
+    confirm: bool = False
+    confirmation_token: str | None = Field(
+        default=None, min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$"
+    )
+    remove_orphan_locations: bool = True
+    compact: bool = False
+
+    @model_validator(mode="after")
+    def validate_prune_request(self) -> "SemanticCachePruneRequest":
+        selectors = (
+            self.backend_id,
+            self.model,
+            self.representation,
+            self.preprocessing,
+            self.segment_policy,
+            self.created_before,
+            self.last_accessed_before,
+        )
+        if not self.all_spaces and not any(value is not None for value in selectors):
+            raise ValueError("Provide at least one cache filter or set all_spaces=true")
+        if self.all_spaces and any(value is not None for value in selectors):
+            raise ValueError("all_spaces cannot be combined with cache filters")
+        for value in (self.created_before, self.last_accessed_before):
+            if value is not None and value.utcoffset() is None:
+                raise ValueError("Cache date filters must include a timezone")
+        if not self.dry_run and (not self.confirm or self.confirmation_token is None):
+            raise ValueError(
+                "A confirmed prune requires confirm=true and the dry-run confirmation token"
+            )
+        if self.dry_run and self.confirm:
+            raise ValueError("confirm is only valid when dry_run=false")
+        return self
+
+
+class SemanticCachePruneResponse(BaseModel):
+    dry_run: bool
+    matched_embeddings: int = Field(ge=0)
+    matched_spaces: int = Field(ge=0)
+    matched_vector_bytes: int = Field(ge=0)
+    deleted_embeddings: int = Field(ge=0)
+    deleted_spaces: int = Field(ge=0)
+    deleted_locations: int = Field(ge=0)
+    cleared_l1_entries: int = Field(ge=0)
+    confirmation_token: str
 
 
 class AnalysisProgressStageSnapshot(BaseModel):

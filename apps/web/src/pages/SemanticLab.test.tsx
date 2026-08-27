@@ -11,7 +11,7 @@ const secondTrack = { ...track, id: "track-2", name: "Second Track" };
 const backend = { id: "local-clap", display_name: "Local CLAP", model: "clap-v1", available: true, requires_local_audio: true, max_tracks: 2, max_labels: 3, max_embedding_batch: 20, capabilities: ["text_similarity"] };
 const focusKey = "semantic:local-clap:clap-v1:focus";
 const warmKey = "semantic:local-clap:clap-v1:warm glow";
-const mertBackend = { id: "local-mert", display_name: "Local MERT", model: "mert-v1", available: true, requires_local_audio: true, max_tracks: 10, max_labels: 1, max_embedding_batch: 10, capabilities: ["reference_similarity", "embedding_extraction"], embedding_representation: "mert-last-hidden-mean-30s-v1", default_representation: { layer: "last_hidden_state", pooling: "mean", segment: "whole_track" } };
+const mertBackend = { id: "local-mert", display_name: "Local MERT", model: "mert-v1", available: true, requires_local_audio: true, max_tracks: 10, max_labels: 1, max_embedding_batch: 10, capabilities: ["reference_similarity", "embedding_extraction"], embedding_representation: "mert-last-hidden-mean-30s-v1", default_representation: { layer: "last_hidden_state", pooling: "mean", segment: "whole_track" }, supported_representations: [{ layer: "last_hidden_state", pooling: "mean", segment: "whole_track" }] };
 
 afterEach(() => {
   cleanup();
@@ -40,6 +40,7 @@ it("searches readable MERT references, previews locally, and inspects neighbors 
         { track_id: "track-3", status: "complete", scores: [{ key: "semantic:local-mert:mert-v1:last_hidden_state:mean:whole_track:similar to track-2", label: "similar", normalized_label: "similar", score: 0.8, provenance: { backend: "local-mert", model: "mert-v1", representation: mertBackend.default_representation } }] },
       ],
       missing_track_ids: [],
+      representation: mertBackend.default_representation,
       request: JSON.parse(String(init?.body)),
     }) };
     throw new Error(`Unexpected request: ${path}`);
@@ -51,10 +52,11 @@ it("searches readable MERT references, previews locally, and inspects neighbors 
   expect(screen.queryByRole("radio", { name: /Readable Track/ })).toBeNull();
   await user.click(screen.getByRole("radio", { name: /Second Wave/ }));
   expect(screen.getByLabelText("Preview reference Second Wave").getAttribute("src")).toContain("authorized%2Ftwo.mp3");
-  expect(screen.getByLabelText("MERT representation identity").textContent).toContain("last_hidden_state · mean pooling · whole track · mert-v1");
+  expect((screen.getByLabelText("MERT representation") as HTMLSelectElement).value).toContain("last_hidden_state");
   await user.click(screen.getByRole("button", { name: "Inspect nearest neighbors" }));
   await waitFor(() => expect(onRunsChange).toHaveBeenCalledTimes(1));
   expect(JSON.parse(String(vi.mocked(fetch).mock.calls[1][1]?.body)).reference_track_id).toBe("track-2");
+  expect(JSON.parse(String(vi.mocked(fetch).mock.calls[1][1]?.body)).representation).toEqual(mertBackend.default_representation);
   expect(onPromote).not.toHaveBeenCalled();
 
   const runs = onRunsChange.mock.calls[0][0] as SemanticExperimentRunV1[];
