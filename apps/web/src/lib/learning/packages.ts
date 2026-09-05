@@ -1,0 +1,135 @@
+export type LearningPackageId = "clap" | "muq" | "mert" | "essentia";
+export type FeatureScope = "In Flowset" | "Upstream only" | "Flowset workflow";
+export interface LearningFeature { name: string; detail: string; scope: FeatureScope; }
+export interface LearningPackage {
+  id: LearningPackageId; name: string; subtitle: string; version: string; question: string;
+  explanation: string; pipeline: string[]; input: string; output: string; limitation: string;
+  features: LearningFeature[]; links: { label: string; url: string }[]; exercise: string[];
+}
+const feature = (name: string, detail: string, scope: FeatureScope = "In Flowset"): LearningFeature => ({name, detail, scope});
+export const learningPackages: LearningPackage[] = [
+  {
+    id: "clap", name: "CLAP", subtitle: "Find sound with words", version: "laion-clap 1.1.7 · HTSAT-tiny, unfused",
+    question: "Which tracks sound like this description?",
+    explanation: "CLAP trains an audio encoder and a text encoder to place paired sounds and descriptions near each other. Its training covers general audio, so descriptions can include instruments, textures, voices, and environmental sounds. Flowset compares your prompt with audio embeddings; it does not generate a written description of the song.",
+    pipeline: ["Audio → spectrogram → HTSAT", "Text → tokens → RoBERTa", "Shared vectors → similarity ranking"],
+    input: "Audio files or 48 kHz waveform arrays upstream; text prompts. Flowset passes files to the package’s own preprocessing.",
+    output: "Audio/text vectors and relative match scores. Higher means a closer match within this model and experiment.",
+    limitation: "A match score is not a probability or a measured musical attribute. Prompt wording and the checkpoint change results. Flowset uses the unfused checkpoint; it does not expose checkpoint switching or fusion controls.",
+    features: [
+      feature("Audio embeddings from files", "get_audio_embedding_from_filelist; reused by Flowset’s cache."),
+      feature("Audio embeddings from arrays", "get_audio_embedding_from_data accepts batched waveforms.", "Upstream only"),
+      feature("Text embeddings", "get_text_embedding encodes one or several descriptions."),
+      feature("Text tokenization", "tokenizer prepares the text encoder input.", "Upstream only"),
+      feature("Checkpoint loading", "load_ckpt selects pretrained weights; Flowset loads its configured local checkpoint."),
+      feature("Tensor / NumPy outputs", "use_tensor chooses the public API output representation.", "Upstream only"),
+      feature("Fusion and encoder variants", "Model construction selects fusion, audio encoder, text encoder, and device.", "Upstream only"),
+      feature("Zero-shot labels and retrieval", "Rank candidate descriptions or tracks without training a new classifier."),
+      feature("Training and evaluation", "The repository includes training scripts, evaluation, and checkpoint recipes.", "Upstream only"),
+      feature("Compare, contrast, map, cluster", "Semantic Lab adds matrices, prompt contrasts, PCA, clusters, neighbors, and explicit recipe promotion.", "Flowset workflow"),
+    ],
+    links: [
+      {label:"Official README",url:"https://github.com/LAION-AI/CLAP"},
+      {label:"Complete public inference API",url:"https://github.com/LAION-AI/CLAP/blob/main/src/laion_clap/hook.py"},
+      {label:"Paper",url:"https://arxiv.org/abs/2211.06687"},
+      {label:"Checkpoint collection",url:"https://huggingface.co/lukewys/laion_clap"},
+      {label:"Code license (CC0)",url:"https://github.com/LAION-AI/CLAP/blob/main/LICENSE"},
+    ],
+    exercise:["Select a small local source pool in Playlist Builder.","Open Semantic Lab, choose Local CLAP, and compare “warm piano” with “driving percussion”.", "Run the experiment, audition the strongest and weakest matches, then inspect the score matrix. Promote only after listening."],
+  },
+  {
+    id:"muq", name:"MuQ / MuQ-MuLan", subtitle:"A music specialist with a language bridge", version:"muq 0.1.0 · MuQ-MuLan-large",
+    question:"Which music fits this musical idea?",
+    explanation:"MuQ learns music representations by predicting discrete targets produced by Mel residual vector quantization. MuQ-MuLan adds contrastive music/text alignment, including English and Chinese prompts. Flowset uses MuQ-MuLan for text search; the standalone MuQ encoder is a different model in the same package.",
+    pipeline:["Audio → MuQ music representation", "Text → language representation", "MuLan alignment → shared music/text vectors"],
+    input:"Both models require 24 kHz audio. Flowset loads mono audio and analyzes the first 30 seconds for MuQ-MuLan.",
+    output:"MuQ: frame/layer representations. MuQ-MuLan: audio and text vectors plus a similarity matrix.",
+    limitation:"Music specialization does not guarantee better rankings for every library. Compare ordering and listen: raw CLAP and MuQ-MuLan scores use different scales. Intro-only analysis can miss the main section of a song.",
+    features:[
+      feature("MuQ hidden states", "MuQ.forward returns final and optional intermediate representations.","Upstream only"),
+      feature("Pretrained model loading", "from_pretrained for MuQ and MuQMuLan; Flowset uses provisioned local weights."),
+      feature("MuLan audio encoding", "forward(wavs=…) and extract_audio_latents."),
+      feature("MuLan text encoding", "forward(texts=…) and extract_text_latents, including English and Chinese."),
+      feature("Pairwise similarity", "calc_similarity compares music and text vectors."),
+      feature("Long-audio clip processing", "Audio-latent extraction has clip handling and parallel processing options; Flowset caps input at 30 seconds.","Upstream only"),
+      feature("Configuration and model access", "Configuration classes, frozen/device properties, and mulan_module expose the underlying model.","Upstream only"),
+      feature("Research training recipes", "The repository links model training recipes and benchmark results.","Upstream only"),
+      feature("Compare, contrast, map, cluster", "Flowset supplies score matrices, model comparisons, prompt contrasts, embedding exploration, and promotion.","Flowset workflow"),
+    ],
+    links:[
+      {label:"Official README",url:"https://github.com/tencent-ailab/MuQ"},
+      {label:"MuLan inference API",url:"https://github.com/tencent-ailab/MuQ/blob/main/src/muq/muq_mulan/muq_mulan.py"},
+      {label:"MuQ source API",url:"https://github.com/tencent-ailab/MuQ/tree/main/src/muq/muq"},
+      {label:"Paper",url:"https://arxiv.org/abs/2501.01108"},
+      {label:"Model card",url:"https://huggingface.co/OpenMuQ/MuQ-MuLan-large"},
+      {label:"Code license (MIT)",url:"https://github.com/tencent-ailab/MuQ/blob/main/LICENSE"},
+      {label:"Weights license (CC BY-NC 4.0)",url:"https://github.com/tencent-ailab/MuQ/blob/main/LICENSE_weights"},
+    ],
+    exercise:["Use the same selected tracks and prompts as your CLAP run.","Choose Local MuQ-MuLan in Semantic Lab and run the comparison.","Compare rank overlap and audition disagreements. Try an English and a Chinese description of the same musical idea."],
+  },
+  {
+    id:"mert", name:"MERT", subtitle:"Explore musical resemblance", version:"MERT-v1-95M · Transformers runtime",
+    question:"What else has the musical character of this song?",
+    explanation:"MERT is an audio-only Transformer trained with masked prediction tasks and acoustic and musical training targets. It learns a representation over time rather than a fixed list of genre tags. Different layers can carry different information. A downstream application decides how to pool or classify those representations.",
+    pipeline:["24 kHz audio → waveform features", "Transformer → frames × hidden dimensions", "Time pooling → vector → nearest neighbors"],
+    input:"The 95M checkpoint uses 24 kHz audio. Flowset uses the first 30 seconds, the final hidden state, and mean pooling.",
+    output:"Upstream: 13 hidden-state levels (input plus 12 layers), with 768 dimensions at each time step. Flowset keeps one pooled vector per track.",
+    limitation:"MERT has no text encoder. Similarity does not guarantee matching key, tempo, or a smooth transition. Flowset’s whole_track representation label currently denotes a pooled excerpt capped at 30 seconds, not full-song analysis.",
+    features:[
+      feature("Waveform preprocessing", "Wav2Vec2FeatureExtractor resamples/prepares model input; Flowset decodes at the expected rate."),
+      feature("Final frame representations", "AutoModel returns last_hidden_state; Flowset mean-pools it."),
+      feature("All layer representations", "output_hidden_states exposes intermediate layers for comparison.","Upstream only"),
+      feature("Alternative pooling / learned aggregation", "The model card demonstrates time reduction and learned layer weighting.","Upstream only"),
+      feature("Downstream task heads", "Representations can train classifiers or other MIR tasks; these are not ready-made tags.","Upstream only"),
+      feature("Model family / training", "95M and 330M variants plus research pretraining code; Flowset configures one checkpoint.","Upstream only"),
+      feature("Reference ranking", "Select a real song, compute neighbors, audition, and promote a score.","Flowset workflow"),
+      feature("Embedding workspace", "Inspect vectors, PCA coordinates, clusters, pairwise neighbors, and prototypes.","Flowset workflow"),
+    ],
+    links:[
+      {label:"Official README and training code",url:"https://github.com/yizhilll/MERT"},
+      {label:"95M model card and usage",url:"https://huggingface.co/m-a-p/MERT-v1-95M"},
+      {label:"Checkpoint implementation",url:"https://huggingface.co/m-a-p/MERT-v1-95M/tree/main"},
+      {label:"Paper",url:"https://arxiv.org/abs/2306.00107"},
+      {label:"Code license",url:"https://github.com/yizhilll/MERT/blob/main/LICENSE"},
+      {label:"Weights license (CC BY-NC 4.0)",url:"https://huggingface.co/m-a-p/MERT-v1-95M/blob/main/README.md"},
+    ],
+    exercise:["Choose a few tracks you know well and open the reference-track neighbor explorer in Semantic Lab.","Search for a reference by title or artist, audition it, then inspect nearest neighbors.","Use a small embedding batch to explore clusters. Compare its neighbors with actual tempo and key before building transitions."],
+  },
+  {
+    id:"essentia", name:"Essentia", subtitle:"Measure the sound; estimate its mood", version:"essentia-tensorflow 2.1b6.dev1389",
+    question:"How fast, bright, dynamic, or emotionally intense is it?",
+    explanation:"Essentia is a collection of audio algorithms, not one ML model. Standard mode runs individual algorithms; streaming mode connects them into a processing graph. Flowset combines MusicExtractor signal measurements with separately trained TensorFlow mood models. The catalog below includes every registered Python algorithm in the pinned build.",
+    pipeline:["Decode audio → frames / spectra", "DSP descriptors + musicnn / mood heads", "Aggregate measurements → split, subgroup, sort"],
+    input:"Audio plus algorithm-specific parameters. TensorFlow inference also needs compatible weights and metadata; many catalog algorithms need no ML model.",
+    output:"Flowset exposes 12 signal descriptors and 5 model estimates. The full catalog also covers pitch, filters, statistics, segmentation, IO, and other analysis tools.",
+    limitation:"Arousal is an estimated mood dimension, not Spotify energy. Flowset normalizes Essentia danceability to 0–1. Mood models have dataset biases. Most catalog algorithms and model-zoo checkpoints do not have a Flowset control.",
+    features:[
+      ...["Tempo", "Key", "Mode", "Danceability", "Loudness", "Loudness range", "Onset rate", "Beat strength", "Dynamic complexity", "Brightness", "Spectral flux", "Key strength"].map(name=>feature(name,"MusicExtractor-derived signal descriptor; inspect values and provenance below.")),
+      ...["Arousal", "Valence", "Aggressiveness", "Party", "Relaxed"].map(name=>feature(name,"TensorFlow model estimate; requires separately configured mood weights.")),
+      feature("Standard and streaming algorithms", "Full searchable registry below includes each mode’s input, output, and parameter names.","Upstream only"),
+      feature("TensorFlow model zoo", "Feature extractors, tagging, classification, and other trained models have their own weights, metadata, and examples.","Upstream only"),
+      feature("Python, C++, JavaScript and extractors", "Bindings, command-line extractors, custom algorithms, and integrations extend the library beyond Flowset.","Upstream only"),
+      feature("Energy journey and mood crates", "Use available arousal/valence measurements for transparent playlist recipes.","Flowset workflow"),
+    ],
+    links:[
+      {label:"Official documentation",url:"https://essentia.upf.edu/documentation.html"},
+      {label:"Complete online algorithm reference",url:"https://essentia.upf.edu/algorithms_reference.html"},
+      {label:"Full model zoo and examples",url:"https://essentia.upf.edu/models.html"},
+      {label:"Python tutorials",url:"https://essentia.upf.edu/essentia_python_tutorial.html"},
+      {label:"Official interactive demos",url:"https://essentia.upf.edu/demos.html"},
+      {label:"MusicExtractor output reference",url:"https://essentia.upf.edu/streaming_extractor_music.html"},
+      {label:"Licensing",url:"https://essentia.upf.edu/licensing_information.html"},
+    ],
+    exercise:["Select a small local playlist in Playlist Builder and open Analysis & advanced controls.","Select Essentia, then Analyze selected tracks. Existing matching caches can be reused.","Inspect the values here, then try Energy journey or Mood crates. Inspect complete track membership before exporting."],
+  },
+];
+
+export const essentiaFields = [
+  ["tempo","Tempo","BPM"], ["key","Key","pitch class (0 = C)"], ["mode","Mode","0 minor / 1 major"],
+  ["danceability","Danceability","normalized 0–1"], ["loudness","Loudness","LUFS"], ["loudness_range","Loudness range","LU"],
+  ["onset_rate","Onset rate","onsets / second"], ["beat_strength","Beat strength","mean beat loudness"],
+  ["dynamic_complexity","Dynamic complexity","dB"], ["brightness","Brightness","spectral centroid, Hz"],
+  ["spectral_flux","Spectral flux","spectral change"], ["key_strength","Key strength","algorithm confidence"],
+  ["arousal","Arousal","normalized model estimate"], ["valence","Valence","normalized model estimate"],
+  ["aggressiveness","Aggressiveness","model score 0–1"], ["party","Party","model score 0–1"], ["relaxed","Relaxed","model score 0–1"],
+] as const;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { DistributionChart, DistributionLegend } from "./components/DistributionChart";
 import {
@@ -125,6 +125,8 @@ import type {
   Track,
 } from "./lib/types";
 import type { SemanticExperimentRunV1, SemanticPromotion } from "./lib/semantic/types";
+
+const Learning = lazy(() => import("./pages/Learning").then((module) => ({ default: module.Learning })));
 
 export function mergeSemanticScores(existing: SemanticScore[] = [], incoming: SemanticScore[] = []): SemanticScore[] {
   const merged = new Map(existing.map((score) => [score.key, score]));
@@ -349,7 +351,7 @@ export default function App() {
     }
   })();
   const [sourceMode, setSourceMode] = useState<"local" | "demo">("local");
-  const [workspaceMode, setWorkspaceMode] = useState<"builder" | "semantic-lab">("builder");
+  const [workspaceMode, setWorkspaceMode] = useState<"builder" | "semantic-lab" | "learning">("builder");
   const [semanticRuns, setSemanticRuns] = useState<readonly SemanticExperimentRunV1[]>(() =>
     readBrowserWorkspaceState(localStorage).semanticRuns,
   );
@@ -1444,6 +1446,7 @@ export default function App() {
             <div role="group" aria-label="Workspace" className="source-mode-tabs">
               <button type="button" className={workspaceMode === "builder" ? "active" : ""} aria-pressed={workspaceMode === "builder"} onClick={() => setWorkspaceMode("builder")}>Playlist Builder</button>
               <button type="button" className={workspaceMode === "semantic-lab" ? "active" : ""} aria-pressed={workspaceMode === "semantic-lab"} onClick={() => setWorkspaceMode("semantic-lab")}>Semantic Lab</button>
+              <button type="button" className={workspaceMode === "learning" ? "active" : ""} aria-pressed={workspaceMode === "learning"} onClick={() => setWorkspaceMode("learning")}>Learn</button>
             </div>
             <span className="hidden text-[10px] uppercase tracking-[0.16em] text-acid/65 sm:block">
               {sourceMode === "local" ? "Local library workspace" : "Fixture workspace"}
@@ -1453,7 +1456,11 @@ export default function App() {
       </header>
 
       <main id="workspace" className="mx-auto max-w-[1480px] px-5 pb-16 pt-9 lg:px-8 lg:pt-12">
-        {workspaceMode === "semantic-lab" ? (
+        {workspaceMode === "learning" ? (
+          <Suspense fallback={<p role="status">Opening the learning studio…</p>}>
+            <Learning tracks={uniqueTracks} audioPaths={selectedAudioPaths} onOpenBuilder={() => setWorkspaceMode("builder")} onOpenLab={() => setWorkspaceMode("semantic-lab")} />
+          </Suspense>
+        ) : workspaceMode === "semantic-lab" ? (
           <SemanticLab
             tracks={uniqueTracks}
             audioPaths={selectedAudioPaths}
