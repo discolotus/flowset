@@ -291,11 +291,13 @@ export interface LocalLibraryFolder {
 }
 
 export interface LocalLibraryBrowseResponse {
+  root_id?: string;
   root_name: string;
   current_path: string;
   current_name: string;
   parent_path?: string | null;
   folders: LocalLibraryFolder[];
+  audio_files?: LocalLibraryFolder[];
 }
 
 export interface LocalPlaylistFile {

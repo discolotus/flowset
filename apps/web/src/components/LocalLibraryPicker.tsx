@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { localAudioPreviewUrl } from "../lib/api";
+import { FolderNavigation } from "./FolderNavigation";
 import type {
   LocalLibraryBrowseResponse,
   LocalLibraryFolder,
@@ -36,6 +39,7 @@ function FolderCandidates({
   error,
   onImport,
   onChangeLibrary,
+  onBrowse,
   disabled = false,
 }: Pick<
   LocalLibraryPickerProps,
@@ -45,6 +49,7 @@ function FolderCandidates({
   | "error"
   | "onImport"
   | "onChangeLibrary"
+  | "onBrowse"
   | "disabled"
 >) {
   if (!library) return null;
@@ -65,8 +70,11 @@ function FolderCandidates({
         </button>
       </header>
       {error && <div className="notice" role="alert">{error}</div>}
+      <button type="button" className="primary-button mt-4" disabled={disabled || importingPaths.has(library.current_path) || importedPaths.has(library.current_path)} onClick={() => onImport({ path: library.current_path, name: library.current_name })}>
+        {importingPaths.has(library.current_path) ? "Importing…" : importedPaths.has(library.current_path) ? "Folder added" : "Add this folder as a playlist"}
+      </button>
       {library.folders.length === 0 ? (
-        <p className="library-empty">This folder has no subfolders to use as playlists.</p>
+        <p className="library-empty">No subfolders here. Add this folder to import the songs it contains.</p>
       ) : (
         <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           {library.folders.map((folder) => {
@@ -81,6 +89,7 @@ function FolderCandidates({
                     Tracks are read only when added
                   </small>
                 </span>
+                <button type="button" className="compact-button" disabled={disabled} aria-label={`Open ${folder.name}`} onClick={() => { onChangeLibrary(); onBrowse(folder.path); }}>Open</button>
                 <button
                   type="button"
                   className="compact-button"
@@ -191,17 +200,21 @@ export function LocalLibraryPicker(props: LocalLibraryPickerProps) {
     onSelectNativeFolder,
     onSelectRecentRoot,
     onChooseLibrary,
+    onChangeLibrary,
   } = props;
+  const [folderFilter, setFolderFilter] = useState("");
+  const location = library ?? browser;
+  const navigation = location && <FolderNavigation location={location} disabled={disabled || browsing} onBrowse={(path) => { onChangeLibrary(); onBrowse(path); setFolderFilter(""); }} />;
   if (library) {
-    return sourceMethod === "playlist-files"
+    return <>{navigation}{sourceMethod === "playlist-files"
       ? <PlaylistFileCandidates {...props} />
-      : <FolderCandidates {...props} />;
+      : <FolderCandidates {...props} />}</>;
   }
 
   const selectingPlaylistFiles = sourceMethod === "playlist-files";
 
   return (
-    <section className="library-browser" aria-labelledby="library-browser-heading">
+    <>{navigation}<section className="library-browser" aria-labelledby="library-browser-heading">
       <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
           <p className="eyebrow">Local source</p>
@@ -225,8 +238,9 @@ export function LocalLibraryPicker(props: LocalLibraryPickerProps) {
               {selectingNativeFolder ? "Opening…" : "Choose folder…"}
             </button>
           )}
+          {browser && sourceMethod === "folders" && <button type="button" className="secondary-button" disabled={disabled || browsing || props.importingPaths.has(browser.current_path) || props.importedPaths.has(browser.current_path)} onClick={() => props.onImport({ path: browser.current_path, name: browser.current_name })}>{props.importingPaths.has(browser.current_path) ? "Importing…" : props.importedPaths.has(browser.current_path) ? "Folder added" : "Add this folder as a playlist"}</button>}
           {browser && (
-            <button type="button" className="primary-button" disabled={disabled} onClick={onChooseLibrary}>
+            <button type="button" className="primary-button" disabled={disabled || browsing} onClick={onChooseLibrary}>
               {selectingPlaylistFiles ? "Search" : "Use"} “{browser.current_name}”
             </button>
           )}
@@ -271,8 +285,9 @@ export function LocalLibraryPicker(props: LocalLibraryPickerProps) {
             </span>
             {browsing && <small className="ml-auto text-[10px] text-acid/60">Loading…</small>}
           </div>
-          <div className="divide-y divide-line">
-            {browser.folders.map((folder) => (
+          <label className="control-field m-3"><span>Find a folder</span><input type="search" value={folderFilter} onChange={(event) => setFolderFilter(event.target.value)} placeholder="Filter folders by name" /></label>
+          <div className="divide-y divide-line max-h-80 overflow-y-auto">
+            {browser.folders.filter((folder) => folder.name.toLocaleLowerCase().includes(folderFilter.trim().toLocaleLowerCase())).map((folder) => (
               <button
                 key={folder.path}
                 type="button"
@@ -290,6 +305,7 @@ export function LocalLibraryPicker(props: LocalLibraryPickerProps) {
                 <span className="text-mist/35" aria-hidden="true">→</span>
               </button>
             ))}
+            {browser.folders.length > 0 && !browser.folders.some((folder) => folder.name.toLocaleLowerCase().includes(folderFilter.trim().toLocaleLowerCase())) && <p className="library-empty">No folders match “{folderFilter}”.</p>}
             {browser.folders.length === 0 && (
               <p className="library-empty">
                 No subfolders found. You can still {selectingPlaylistFiles ? "search" : "use"} this folder.
@@ -304,6 +320,7 @@ export function LocalLibraryPicker(props: LocalLibraryPickerProps) {
             : "Choose a folder to use as your local music library."}
         </p>
       ) : null}
-    </section>
+      {browser && (browser.audio_files?.length ?? 0) > 0 && <details className="mt-4"><summary className="cursor-pointer text-sm">Audio files in this folder ({browser.audio_files?.length})</summary><div className="folder-audio-files">{browser.audio_files?.map((file) => <div key={file.path}><span>{file.name}</span><audio controls preload="none" aria-label={`Preview file ${file.name}`} src={localAudioPreviewUrl(file.path)} /></div>)}</div></details>}
+    </section></>
   );
 }

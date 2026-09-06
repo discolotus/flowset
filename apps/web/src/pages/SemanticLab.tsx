@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { batchSemanticRanking } from "../lib/semantic/batchRanking";
+import { ResultPages } from "../components/ResultPages";
 import { ReferenceTrackPicker } from "../components/ReferenceTrackPicker";
 import { SemanticPromptComposer, SEMANTIC_PROMPT_EXAMPLES, type SemanticPromptRow } from "../components/SemanticPromptComposer";
 import { SemanticContrastControl } from "../components/SemanticContrastControl";
@@ -26,12 +28,15 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
   onPromote: (promotion: SemanticPromotion, scoresByTrack: ReadonlyMap<string, Track["semantic_scores"]>) => boolean;
 }) {
   const authorizedTracks = useMemo(() => tracks.filter(({ id }) => Boolean(audioPaths[id])), [audioPaths, tracks]);
+  const authorizedIdSignature = JSON.stringify(authorizedTracks.map(({ id }) => id));
+  const authorizedIds = useMemo(() => JSON.parse(authorizedIdSignature) as string[], [authorizedIdSignature]);
   const [backends, setBackends] = useState<SemanticBackendCapabilities[]>([]);
   const [backendId, setBackendId] = useState("");
   const [promptRows, setPromptRows] = useState<readonly SemanticPromptRow[]>([{ id: "prompt-initial", value: "" }]);
   const [referenceBackendId, setReferenceBackendId] = useState("");
   const [referenceTrackId, setReferenceTrackId] = useState("");
   const [referenceRepresentationKey, setReferenceRepresentationKey] = useState("");
+  const [trackFilter, setTrackFilter] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeRunId, setActiveRunId] = useState(runs[0]?.id ?? "");
   const [selectedScoreKey, setSelectedScoreKey] = useState("");
@@ -41,7 +46,13 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
   const [scopes, setScopes] = useState<Record<SemanticRecipeScope, boolean>>({ distribution: true, split: false, subgroup: false, sort: false });
   const [status, setStatus] = useState("Checking local semantic backends…");
   const [referenceStatus, setReferenceStatus] = useState("Checking MERT reference capabilities…");
+  const [resultPage, setResultPage] = useState(0);
+  useEffect(() => setResultPage(0), [activeRunId, sortDirection]);
+  const searchRevision = useRef(0);
+  useEffect(() => () => { searchRevision.current += 1; }, []);
   const [busy, setBusy] = useState(false);
+  const searchInputs = JSON.stringify([authorizedIdSignature, [...selectedIds], backendId, referenceBackendId, promptRows, referenceTrackId, referenceRepresentationKey]);
+  useEffect(() => { searchRevision.current += 1; setBusy(false); }, [searchInputs]);
   const [setupBusy, setSetupBusy] = useState(false);
   const [acceptRestrictedWeights, setAcceptRestrictedWeights] = useState(false);
   const [acceptTrustedCode, setAcceptTrustedCode] = useState(false);
@@ -72,10 +83,10 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
 
   useEffect(() => {
     setSelectedIds((current) => {
-      const retained = [...current].filter((id) => authorizedTracks.some((track) => track.id === id));
-      return new Set(retained.length ? retained : authorizedTracks.map(({ id }) => id));
+      const retained = [...current].filter((id) => authorizedIds.includes(id));
+      return new Set(retained.length ? retained : authorizedIds);
     });
-  }, [authorizedTracks]);
+  }, [authorizedIds]);
 
   useEffect(() => {
     const selected = authorizedTracks.filter(({ id }) => selectedIds.has(id));
@@ -91,6 +102,7 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
     ?? referenceRepresentations.find((item) => representationKey(item) === representationKey(referenceBackend?.default_representation ?? { layer: "", pooling: "", segment: "" }))
     ?? referenceRepresentations[0];
   const selectedTracks = authorizedTracks.filter(({ id }) => selectedIds.has(id));
+  const matchingTracks = authorizedTracks.filter((track) => `${track.name} ${track.artist} ${track.album}`.toLocaleLowerCase().includes(trackFilter.trim().toLocaleLowerCase()));
   const activeRun = runs.find(({ id }) => id === activeRunId) ?? runs[0];
   const promptValidation = validateSemanticPrompts(promptRows.map(({ value }) => value), backend?.max_labels ?? 1);
   const rawScoreOptions = activeRun?.kind === "text-ranking"
@@ -174,11 +186,17 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
   const totalCellCount = (activeRun?.trackIds.length ?? 0) * (activeRun?.prompts.length ?? 0);
 
   async function runExperiment() {
-    if (!backend || !selectedTracks.length || oversized || promptValidation.error) return;
+    if (!backend || !selectedTracks.length || promptValidation.error) return;
+    const revision = ++searchRevision.current;
     setBusy(true);
     const createdAt = new Date().toISOString();
     try {
-      const response = await rankSemanticAudio({ backendId: backend.id, labels: promptValidation.labels, audioPaths: Object.fromEntries(selectedTracks.map(({ id }) => [id, audioPaths[id]])) });
+      const response = await batchSemanticRanking({ backend,
+        audioPaths: Object.fromEntries(selectedTracks.map(({ id }) => [id, audioPaths[id]])),
+        shouldStop: () => revision !== searchRevision.current, onProgress: setStatus,
+        runBatch: (paths) => rankSemanticAudio({ backendId: backend.id, labels: promptValidation.labels, audioPaths: paths }),
+      });
+      if (revision !== searchRevision.current) return;
       const completedAt = new Date().toISOString();
       const run = createTextRankingRun({ id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`, labels: promptValidation.labels, tracks: selectedTracks, sourceTrackIds: tracks.map(({ id }) => id), backend: response.backend ?? backend, response, createdAt, completedAt });
       onRunsChange(rememberSemanticRun(runs, run));
@@ -188,22 +206,30 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
       setNegativeScoreKey("");
       setStatus(`${run.results.filter(({ status: resultStatus }) => resultStatus === "complete").length} ranked · ${run.results.filter(({ status: resultStatus }) => resultStatus !== "complete").length} unavailable. Recipe unchanged.`);
     } catch (reason) {
-      setStatus(reason instanceof Error ? reason.message : "Semantic ranking failed.");
-    } finally { setBusy(false); }
+      if (revision === searchRevision.current) setStatus(reason instanceof Error ? reason.message : "Semantic ranking failed.");
+    } finally { if (revision === searchRevision.current) setBusy(false); }
   }
 
   async function runReferenceExperiment() {
     const referenceTrack = selectedTracks.find(({ id }) => id === referenceTrackId);
-    if (!referenceBackend || !referenceTrack || !selectedReferenceRepresentation || !selectedTracks.length || referenceOversized) return;
+    if (!referenceBackend || !referenceTrack || !selectedReferenceRepresentation || !selectedTracks.length) return;
+    const revision = ++searchRevision.current;
     setBusy(true);
     const createdAt = new Date().toISOString();
     try {
-      const response = await rankSemanticReference({
-        backendId: referenceBackend.id,
+      const response = await batchSemanticRanking({
+        backend: referenceBackend,
         referenceTrackId: referenceTrack.id,
         audioPaths: Object.fromEntries(selectedTracks.map(({ id }) => [id, audioPaths[id]])),
+        shouldStop: () => revision !== searchRevision.current, onProgress: setReferenceStatus,
+        runBatch: (paths) => rankSemanticReference({
+        backendId: referenceBackend.id,
+        referenceTrackId: referenceTrack.id,
+        audioPaths: paths,
         representation: selectedReferenceRepresentation,
+        }),
       });
+      if (revision !== searchRevision.current) return;
       const completedAt = new Date().toISOString();
       const run = createReferenceRankingRun({
         id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`,
@@ -220,8 +246,8 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
       setSelectedScoreKey(run.scoreKey);
       setReferenceStatus(`${Math.max(0, run.results.filter(({ status: resultStatus }) => resultStatus === "complete").length - 1)} neighbors inspected · Recipe unchanged.`);
     } catch (reason) {
-      setReferenceStatus(reason instanceof Error ? reason.message : "MERT neighbor search failed.");
-    } finally { setBusy(false); }
+      if (revision === searchRevision.current) setReferenceStatus(reason instanceof Error ? reason.message : "MERT neighbor search failed.");
+    } finally { if (revision === searchRevision.current) setBusy(false); }
   }
 
   function promote() {
@@ -276,12 +302,20 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
         onChange={setPromptRows}
         onUseExamples={() => setPromptRows(SEMANTIC_PROMPT_EXAMPLES.slice(0, backend?.max_labels ?? 1).map((value, index) => ({ id: `example-${index}`, value })))}
       />
-      <fieldset className="mt-4"><legend>Authorized track subset ({selectedTracks.length}{backend ? `/${backend.max_tracks}` : ""})</legend>
-        <div className="mt-2 grid gap-2 sm:grid-cols-2">{authorizedTracks.map((track) => <label key={track.id} className="rounded border border-line p-2"><input type="checkbox" checked={selectedIds.has(track.id)} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); event.target.checked ? next.add(track.id) : next.delete(track.id); return next; })} /> {track.name} · {track.artist}</label>)}</div>
+      <fieldset className="mt-4"><legend>Authorized track subset ({selectedTracks.length})</legend>
+        <div className="mt-2 flex flex-wrap items-end gap-2">
+          <label className="control-field"><span>Find tracks</span><input type="search" value={trackFilter} onChange={(event) => setTrackFilter(event.target.value)} placeholder="Title, artist, or album" /></label>
+          <button type="button" className="secondary-button" disabled={busy || !matchingTracks.length} onClick={() => setSelectedIds(new Set(matchingTracks.map(({ id }) => id)))}>Select all matches</button>
+          <button type="button" className="secondary-button" disabled={busy || !matchingTracks.length} onClick={() => setSelectedIds(new Set(matchingTracks.slice(0, backend?.max_tracks ?? 100).map(({ id }) => id)))}>Select up to {backend?.max_tracks ?? 100} matches</button>
+          <button type="button" className="secondary-button" disabled={busy || !selectedIds.size} onClick={() => setSelectedIds(new Set())}>Clear track selection</button>
+        </div>
+        <p className="mt-2 text-xs text-mist/60">{matchingTracks.length} matching tracks · {selectedTracks.length} selected across all filters. Selecting matches replaces the subset; source playlists stay unchanged.</p>
+        <div className="mt-2 grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">{matchingTracks.map((track) => <label key={track.id} className="rounded border border-line p-2"><input type="checkbox" checked={selectedIds.has(track.id)} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); event.target.checked ? next.add(track.id) : next.delete(track.id); return next; })} /> {track.name} · {track.artist}</label>)}</div>
       </fieldset>
       {authorizedTracks.length === 0 && <p role="alert" className="mt-3 text-amber-200">Import and select local tracks with authorized audio paths in Playlist Builder first.</p>}
-      {oversized && <p role="alert" className="mt-3 text-amber-200">Select at most {backend?.max_tracks} tracks for this backend.</p>}
-      <button type="button" className="primary-button mt-4" disabled={busy || !backend?.available || Boolean(promptValidation.error) || !selectedTracks.length || oversized} onClick={runExperiment}>{busy ? "Running…" : "Run prompt matrix"}</button>
+      {oversized && <p role="note" className="mt-3 text-mist/65">All selected tracks will be searched in small sequential batches.</p>}
+      <button type="button" className="primary-button mt-4" disabled={busy || !backend?.available || Boolean(promptValidation.error) || !selectedTracks.length} onClick={runExperiment}>{busy ? "Running…" : "Run prompt matrix"}</button>
+      {busy && <button type="button" className="secondary-button ml-3" onClick={() => { searchRevision.current += 1; setBusy(false); setStatus("Search stopped. The current batch may finish caching."); setReferenceStatus("Search stopped. The current batch may finish caching."); }}>Stop search</button>}
       <p role="status" className="mt-3 text-xs text-mist/60">{status}</p>
     </section>
 
@@ -299,8 +333,8 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
         <label className="font-semibold">Representation<select aria-label="MERT representation" className="mt-1 w-full rounded border border-line bg-ink p-2" value={representationKey(selectedReferenceRepresentation)} onChange={(event) => setReferenceRepresentationKey(event.target.value)}>{referenceRepresentations.map((item) => <option key={representationKey(item)} value={representationKey(item)}>{item.layer} · {item.pooling} pooling · {item.segment.replaceAll("_", " ")}</option>)}</select></label>
         <p className="mt-2 text-mist/65">{referenceBackend?.model} · only backend-advertised representations are selectable and each result records the exact choice.</p>
       </div> : <p className="mt-4 text-xs text-amber-200">This backend does not advertise a supported representation and cannot run the reference explorer safely.</p>}
-      {referenceOversized && <p role="alert" className="mt-3 text-amber-200">Select at most {referenceBackend?.max_tracks} tracks for this backend.</p>}
-      <button type="button" className="primary-button mt-4" disabled={busy || !referenceBackend?.available || !selectedReferenceRepresentation || !referenceTrackId || !selectedTracks.length || referenceOversized} onClick={runReferenceExperiment}>{busy ? "Running…" : "Inspect nearest neighbors"}</button>
+      {referenceOversized && <p role="note" className="mt-3 text-mist/65">All selected tracks will be searched in small batches using the same reference.</p>}
+      <button type="button" className="primary-button mt-4" disabled={busy || !referenceBackend?.available || !selectedReferenceRepresentation || !referenceTrackId || !selectedTracks.length} onClick={runReferenceExperiment}>{busy ? "Running…" : "Inspect nearest neighbors"}</button>
       <p role="status" className="mt-3 text-xs text-mist/60">{referenceStatus}</p>
     </section>
 
@@ -309,8 +343,9 @@ export function SemanticLab({ tracks, audioPaths, runs, onRunsChange, onPromote 
     {activeRun && <section aria-labelledby="results-heading">
       <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="eyebrow">Recent run</p><h2 id="results-heading" className="font-display text-xl font-semibold">{activeRun.kind === "reference-ranking" ? activeRun.query : activeRun.prompts.join(" · ")}</h2><p className="text-xs text-mist/60">{activeRun.backend.display_name} · revision {activeRun.backend.model} · {activeRun.status} · {activeRun.durationMs} ms</p><p className="mt-1 font-mono text-[10px] text-mist/45">{availableCellCount}/{totalCellCount} score cells available · {totalCellCount - availableCellCount} missing · {activeRun.trackSetFingerprint}</p></div>
       <label>Recent runs<select aria-label="Recent experiment run" value={activeRun.id} onChange={(event) => { setActiveRunId(event.target.value); setSelectedScoreKey(""); setPositiveScoreKey(""); setNegativeScoreKey(""); }}>{runs.map((run) => <option key={run.id} value={run.id}>{run.query}{run.prompts.length > 1 ? ` +${run.prompts.length - 1}` : ""} · {run.createdAt}</option>)}</select></label></div>
+      {activeRun.kind === "reference-ranking" && <ResultPages page={resultPage} total={resultRows.length} onChange={setResultPage} label="Neighbor pages" />}
       {activeRun.kind === "reference-ranking" ? <table className="mt-4 w-full text-left text-sm"><caption className="sr-only">Nearest-neighbor results</caption><thead><tr><th>Neighbor</th><th>Track</th><th>Status</th><th>Model provenance</th><th><button type="button" onClick={() => setSortDirection((current) => current === "descending" ? "ascending" : "descending")}>Similarity {sortDirection === "descending" ? "↓" : "↑"}</button></th><th>Preview</th></tr></thead>
-      <tbody>{resultRows.map(({ result, track, score, neighborRank }) => <tr key={result.trackId} className="border-t border-line"><td>{result.trackId === activeRun.referenceTrackId ? "Reference" : neighborRank == null ? "—" : `#${neighborRank}`}</td><td className="py-3"><strong>{track?.name ?? result.trackId}</strong><br/><span className="text-xs text-mist/60">{track ? `${track.artist} · ${track.album}` : "Metadata unavailable"}</span></td><td>{result.status}{result.error ? ` · ${result.error}` : ""}</td><td>{activeRun.backend.id}<br/><span className="text-xs">{activeRun.backend.model}</span>{activeRun.representation && <span className="block text-xs">{activeRun.representation.layer} · {activeRun.representation.pooling} · {activeRun.representation.segment.replaceAll("_", " ")}</span>}</td><td>{score == null ? "—" : score.toFixed(4)}</td><td>{audioPaths[result.trackId] ? <audio aria-label={`Preview ${track?.name ?? result.trackId}`} controls preload="none" src={localAudioPreviewUrl(audioPaths[result.trackId])} /> : "Unavailable"}</td></tr>)}</tbody></table> : <SemanticScoreMatrix
+      <tbody>{resultRows.slice(resultPage * 50, (resultPage + 1) * 50).map(({ result, track, score, neighborRank }) => <tr key={result.trackId} className="border-t border-line"><td>{result.trackId === activeRun.referenceTrackId ? "Reference" : neighborRank == null ? "—" : `#${neighborRank}`}</td><td className="py-3"><strong>{track?.name ?? result.trackId}</strong><br/><span className="text-xs text-mist/60">{track ? `${track.artist} · ${track.album}` : "Metadata unavailable"}</span></td><td>{result.status}{result.error ? ` · ${result.error}` : ""}</td><td>{activeRun.backend.id}<br/><span className="text-xs">{activeRun.backend.model}</span>{activeRun.representation && <span className="block text-xs">{activeRun.representation.layer} · {activeRun.representation.pooling} · {activeRun.representation.segment.replaceAll("_", " ")}</span>}</td><td>{score == null ? "—" : score.toFixed(4)}</td><td>{audioPaths[result.trackId] ? <audio aria-label={`Preview ${track?.name ?? result.trackId}`} controls preload="none" src={localAudioPreviewUrl(audioPaths[result.trackId])} /> : "Unavailable"}</td></tr>)}</tbody></table> : <SemanticScoreMatrix
         run={activeRun}
         selectedScoreKey={activeScoreKey}
         sortDirection={sortDirection}
