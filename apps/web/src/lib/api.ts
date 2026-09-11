@@ -60,7 +60,7 @@ function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
 }
 
-async function request<T>(
+export async function request<T>(
   path: string,
   options?: RequestInit,
   policy: RequestPolicy = {},

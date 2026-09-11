@@ -26,6 +26,7 @@ import { RowDensityToggle } from "./components/RowDensityToggle";
 import { SplitFactorGrid } from "./components/SplitFactorGrid";
 import { SourcePlaylistPicker } from "./components/SourcePlaylistPicker";
 import { ExportDialog } from "./components/ExportDialog";
+import { LibraryDesk } from "./components/library/LibraryDesk";
 import { SemanticLab } from "./pages/SemanticLab";
 import { fingerprintTrackIds } from "./lib/semantic/runs";
 import {
@@ -353,7 +354,7 @@ export default function App() {
     }
   })();
   const [sourceMode, setSourceMode] = useState<"local" | "demo">("local");
-  const [workspaceMode, setWorkspaceMode] = useState<"builder" | "semantic-lab" | "learning">("builder");
+  const [workspaceMode, setWorkspaceMode] = useState<"library" | "builder" | "semantic-lab" | "learning">("library");
   const [semanticRuns, setSemanticRuns] = useState<readonly SemanticExperimentRunV1[]>(() =>
     readBrowserWorkspaceState(localStorage).semanticRuns,
   );
@@ -1494,18 +1495,19 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-ink text-white selection:bg-acid selection:text-ink">
-      <a href="#workspace" className="skip-link">Skip to workspace</a>
+      <a href={workspaceMode === "library" ? "#library-workspace" : "#workspace"} className="skip-link">Skip to workspace</a>
       <header className="sticky top-0 z-30 border-b border-line/80 bg-ink/90 backdrop-blur-xl">
         <nav className="mx-auto flex max-w-[1480px] items-center justify-between px-5 py-4 lg:px-8" aria-label="Primary navigation">
           <div className="flex items-center gap-3">
             <img className="brand-mark" src="/flowset-icon.png" alt="" />
             <div>
               <p className="font-display text-sm font-semibold tracking-tight">Flowset</p>
-              <p className="text-[9px] uppercase tracking-[0.2em] text-mist/45">Playlist laboratory</p>
+              <p className="text-[9px] uppercase tracking-[0.2em] text-mist/70">Library desk</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
             <div role="group" aria-label="Workspace" className="source-mode-tabs">
+              <button type="button" className={workspaceMode === "library" ? "active" : ""} aria-pressed={workspaceMode === "library"} onClick={() => setWorkspaceMode("library")}>Library</button>
               <button type="button" className={workspaceMode === "builder" ? "active" : ""} aria-pressed={workspaceMode === "builder"} onClick={() => setWorkspaceMode("builder")}>Playlist Builder</button>
               <button type="button" className={workspaceMode === "semantic-lab" ? "active" : ""} aria-pressed={workspaceMode === "semantic-lab"} onClick={() => setWorkspaceMode("semantic-lab")}>Semantic Lab</button>
               <button type="button" className={workspaceMode === "learning" ? "active" : ""} aria-pressed={workspaceMode === "learning"} onClick={() => setWorkspaceMode("learning")}>Learn</button>
@@ -1517,7 +1519,18 @@ export default function App() {
         </nav>
       </header>
 
-      <main id="workspace" className="mx-auto max-w-[1480px] px-5 pb-16 pt-9 lg:px-8 lg:pt-12">
+      <LibraryDesk visible={workspaceMode === "library"} onTools={() => setWorkspaceMode("semantic-lab")} onDraft={(tracks, paths, name) => {
+        const playlist = { id: `library-draft-${Date.now()}`, name, tracks, description: "Library selection · draft" };
+        setSourceMode("local");
+        setLocalPlaylists(current => [...current, playlist]);
+        setSelectedIds(new Set([playlist.id]));
+        setLocalAudioPaths(current => ({ ...current, ...paths }));
+        setRecipeName(name);
+        setSplitEnabled(false); setSubgroupEnabled(false); setSortEnabled(false);
+        setSemanticScoreKeys({ distribution: null, split: null, subgroup: null, sort: null });
+        setWorkspaceMode("builder");
+      }} />
+      <main id="workspace" hidden={workspaceMode === "library"} className="mx-auto max-w-[1480px] px-5 pb-16 pt-9 lg:px-8 lg:pt-12">
         {workspaceMode === "learning" ? (
           <Suspense fallback={<p role="status">Opening the learning studio…</p>}>
             <Learning tracks={uniqueTracks} audioPaths={selectedAudioPaths} onOpenBuilder={() => setWorkspaceMode("builder")} onOpenLab={() => setWorkspaceMode("semantic-lab")} />
@@ -1994,7 +2007,7 @@ export default function App() {
         />
       </ExportDialog>
 
-      <footer className="mx-auto flex max-w-[1480px] flex-col justify-between gap-3 border-t border-line px-5 py-7 text-[11px] text-mist/45 sm:flex-row lg:px-8">
+      <footer style={workspaceMode === "library" ? {display:"none"} : undefined} className="mx-auto flex max-w-[1480px] flex-col justify-between gap-3 border-t border-line px-5 py-7 text-[11px] text-mist/45 sm:flex-row lg:px-8">
         <span>Flowset · V0.2 organization pipeline</span>
         <span>
           Source playlists remain read-only · {sourceMode === "demo"

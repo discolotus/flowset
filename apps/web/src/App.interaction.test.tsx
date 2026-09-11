@@ -286,6 +286,7 @@ afterEach(() => {
 });
 
 async function openFixtureWorkspace(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: "Playlist Builder" }));
   await screen.findByRole("button", { name: /Demo playlists/ });
   await user.click(screen.getByRole("button", { name: /Demo playlists/ }));
   await screen.findByRole("heading", { name: /1 basis playlist/ }, { timeout: 2_000 });
@@ -383,6 +384,7 @@ describe("App behavior", () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await user.click(await screen.findByRole("button", { name: "Playlist Builder" }));
     const playlistFiles = await screen.findByRole("button", { name: "Playlist files" });
     expect(playlistFiles.getAttribute("aria-pressed")).toBe("false");
     await user.click(playlistFiles);
@@ -417,6 +419,7 @@ describe("App behavior", () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await user.click(await screen.findByRole("button", { name: "Playlist Builder" }));
     await user.click(await screen.findByRole("button", { name: "Playlist files" }));
     await user.click(await screen.findByRole("button", { name: /Search.*Music/ }));
     await user.click(await screen.findByRole("button", { name: "Add playlist" }));
@@ -535,6 +538,7 @@ describe("App behavior", () => {
       return jsonResponse(imported);
     }));
     render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Playlist Builder" }));
     await user.click(await screen.findByRole("button", { name: "Playlist files" }));
     await user.click(await screen.findByRole("button", { name: /Search.*Music/ }));
     await user.click(await screen.findByRole("button", { name: "Add playlist" }));
