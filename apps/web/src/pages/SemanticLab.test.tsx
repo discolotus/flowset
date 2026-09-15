@@ -225,3 +225,25 @@ it("blocks duplicate and oversized prompt sets before inference", async () => {
   expect(screen.getByRole("button", { name: "Add prompt" })).toHaveProperty("disabled", true);
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
+
+it("filters a large subset, selects within the model limit, and keeps an explicit empty selection", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => [backend] })));
+  const tracks = [track, secondTrack, { ...track, id: "track-3", name: "Third Track" }];
+  const audioPaths = Object.fromEntries(tracks.map(({ id }) => [id, `${id}.mp3`]));
+  const props = { tracks, audioPaths, runs: [], onRunsChange: vi.fn(), onPromote: vi.fn() };
+  const view = render(<SemanticLab {...props} />);
+  await screen.findByRole("button", { name: "Select up to 2 matches" });
+  await user.click(screen.getByRole("button", { name: "Select up to 2 matches" }));
+  const subset = screen.getByRole("group", { name: "Authorized track subset (2)" });
+  expect(within(subset).getAllByRole("checkbox").filter((node) => (node as HTMLInputElement).checked)).toHaveLength(2);
+  await user.type(screen.getByRole("searchbox", { name: "Find tracks" }), "Second");
+  expect(within(subset).getAllByRole("checkbox")).toHaveLength(1);
+  await user.click(screen.getByRole("button", { name: "Select up to 2 matches" }));
+  expect(screen.getByRole("group", { name: "Authorized track subset (1)" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Clear track selection" }));
+  view.rerender(<SemanticLab {...props} tracks={tracks.map((item) => ({ ...item, audio_features: { arousal: 0.5 } }))} />);
+  expect(screen.getByRole("group", { name: "Authorized track subset (0)" })).toBeTruthy();
+  await user.clear(screen.getByRole("searchbox", { name: "Find tracks" }));
+  expect(screen.getByRole("button", { name: "Run prompt matrix" })).toHaveProperty("disabled", true);
+});

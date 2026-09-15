@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useState, type KeyboardEvent } from "react";
 
+import { ResultPages } from "./ResultPages";
 import { localAudioPreviewUrl } from "../lib/api";
 import { normalizeSemanticPrompt } from "../lib/semantic/prompts";
 import type { SemanticExperimentRunV1 } from "../lib/semantic/types";
@@ -20,9 +21,9 @@ export interface SemanticDerivedMatrixColumn {
   scoresByTrack: ReadonlyMap<string, SemanticScore>;
 }
 
-function scoreFor(run: SemanticExperimentRunV1, trackId: string, column: MatrixColumn): number | null {
+function scoreFor(results: ReadonlyMap<string, SemanticExperimentRunV1["results"][number]>, trackId: string, column: MatrixColumn): number | null {
   return column.scoresByTrack?.get(trackId)?.score
-    ?? run.results.find((result) => result.trackId === trackId)?.scores.find(({ key }) => key === column.scoreKey)?.score
+    ?? results.get(trackId)?.scores.find(({ key }) => key === column.scoreKey)?.score
     ?? null;
 }
 
@@ -49,6 +50,8 @@ export function SemanticScoreMatrix({
   onSelectScoreKey: (scoreKey: string) => void;
   onSort: (scoreKey: string) => void;
 }) {
+  const [page, setPage] = useState(0);
+  useEffect(() => setPage(0), [run, selectedScoreKey, sortDirection]);
   const matrixId = useId().replaceAll(":", "");
   const [selectedTrackId, setSelectedTrackId] = useState(run.results[0]?.trackId ?? "");
   useEffect(() => {
@@ -63,18 +66,19 @@ export function SemanticScoreMatrix({
     })).filter((entry): entry is MatrixColumn => Boolean(entry.scoreKey));
     return derivedColumn ? [...rawColumns, { ...derivedColumn, derived: true }] : rawColumns;
   }, [derivedColumn, run]);
+  const resultsById = useMemo(() => new Map(run.results.map((row) => [row.trackId, row])), [run]);
   const snapshots = new Map(run.trackSnapshots.map((track) => [track.trackId, track]));
   const rows = useMemo(() => [...run.results].sort((left, right) => {
     const selectedColumn = columns.find(({ scoreKey }) => scoreKey === selectedScoreKey) ?? columns[0];
-    const leftScore = selectedColumn ? scoreFor(run, left.trackId, selectedColumn) : null;
-    const rightScore = selectedColumn ? scoreFor(run, right.trackId, selectedColumn) : null;
+    const leftScore = selectedColumn ? scoreFor(resultsById, left.trackId, selectedColumn) : null;
+    const rightScore = selectedColumn ? scoreFor(resultsById, right.trackId, selectedColumn) : null;
     if (leftScore == null || rightScore == null) {
       if (leftScore == null && rightScore == null) return left.trackId.localeCompare(right.trackId);
       return leftScore == null ? 1 : -1;
     }
     const difference = sortDirection === "descending" ? rightScore - leftScore : leftScore - rightScore;
     return difference || left.trackId.localeCompare(right.trackId);
-  }), [columns, run, selectedScoreKey, sortDirection]);
+  }), [columns, run, resultsById, selectedScoreKey, sortDirection]);
   const selectedResult = run.results.find(({ trackId }) => trackId === selectedTrackId);
   const selectedTrack = snapshots.get(selectedTrackId);
 
@@ -86,12 +90,13 @@ export function SemanticScoreMatrix({
             : null;
     if (!offset) return;
     event.preventDefault();
-    const nextRow = Math.max(0, Math.min(rows.length - 1, rowIndex + offset[0]));
+    const nextRow = Math.max(page * 50, Math.min(Math.min(rows.length, (page + 1) * 50) - 1, rowIndex + offset[0]));
     const nextColumn = Math.max(0, Math.min(columns.length - 1, columnIndex + offset[1]));
     document.getElementById(`${matrixId}-cell-${nextRow}-${nextColumn}`)?.focus();
   }
 
   return <div className="mt-4">
+    <ResultPages page={page} total={rows.length} onChange={setPage} label="Score pages" />
     <div className="max-h-[34rem] overflow-auto rounded-xl border border-line" role="region" aria-label="Scrollable semantic score matrix" tabIndex={0}>
       <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
         <caption className="sr-only">Tracks by semantic prompt score. Use arrow keys to move between score cells.</caption>
@@ -112,7 +117,8 @@ export function SemanticScoreMatrix({
           </tr>
         </thead>
         <tbody>
-          {rows.map((result, rowIndex) => {
+          {rows.slice(page * 50, (page + 1) * 50).map((result, visibleIndex) => {
+            const rowIndex = page * 50 + visibleIndex;
             const track = snapshots.get(result.trackId);
             return <tr key={result.trackId} data-selected={selectedTrackId === result.trackId ? "true" : "false"} className={selectedTrackId === result.trackId ? "bg-acid/[0.035]" : ""}>
               <th scope="row" className="sticky left-0 z-10 border-b border-r border-line bg-[#111512] p-3">
@@ -122,7 +128,7 @@ export function SemanticScoreMatrix({
                 </button>
               </th>
               {columns.map((column, columnIndex) => {
-                const score = scoreFor(run, result.trackId, column);
+                const score = scoreFor(resultsById, result.trackId, column);
                 const unavailable = result.status === "failed" ? "Failed" : "Unavailable";
                 return <td key={column.scoreKey} className="border-b border-line p-0" style={{ background: heatColor(score) }}>
                   <button

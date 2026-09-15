@@ -112,6 +112,7 @@ class LocalLibraryBrowser:
     def browse(self, path: str = "") -> LocalLibraryBrowseResponse:
         current = self._resolve_directory(path)
         folders: list[LocalLibraryFolder] = []
+        audio_files: list[LocalLibraryFolder] = []
         try:
             with os.scandir(current) as entries:
                 for entry in entries:
@@ -122,6 +123,17 @@ class LocalLibraryBrowser:
                     except OSError:
                         continue
                     if not is_directory:
+                        if (
+                            Path(entry.name).suffix.casefold() in SUPPORTED_AUDIO_EXTENSIONS
+                            and entry.is_file(follow_symlinks=False)
+                        ):
+                            if len(audio_files) >= _MAX_BROWSE_ENTRIES:
+                                raise ValueError(
+                                    "A local listing can return at most 20000 audio files"
+                                )
+                            audio_files.append(LocalLibraryFolder(
+                                path=self._relative_path(current / entry.name), name=entry.name,
+                            ))
                         continue
                     if len(folders) >= _MAX_BROWSE_ENTRIES:
                         raise ValueError("A local folder listing can return at most 20000 folders")
@@ -135,17 +147,20 @@ class LocalLibraryBrowser:
         except OSError as exc:
             raise ValueError("Local music directory could not be read") from exc
         folders.sort(key=lambda folder: folder.name.casefold())
+        audio_files.sort(key=lambda file: file.name.casefold())
 
         current_path = self._relative_path(current)
         parent_path = None
         if current != self._music_root:
             parent_path = self._relative_path(current.parent)
         return LocalLibraryBrowseResponse(
+            root_id=sha256(str(self._music_root).encode()).hexdigest()[:24],
             root_name=self._music_root.name,
             current_path=current_path,
             current_name=current.name,
             parent_path=parent_path,
             folders=folders,
+            audio_files=audio_files,
         )
 
     def discover_playlists(self, path: str = "") -> LocalPlaylistDiscoveryResponse:

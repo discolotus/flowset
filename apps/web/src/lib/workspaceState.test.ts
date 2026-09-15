@@ -10,6 +10,7 @@ import {
   rememberLibraryRoot,
   renameRecipe,
   saveRecipe,
+  saveWorkspaceState,
 } from "./workspaceState";
 
 const recipe = {
@@ -179,4 +180,16 @@ describe("workspace state", () => {
     expect(serialized).not.toContain("access-token-sentinel");
     expect(JSON.parse(serialized).semanticRuns[0].results[0].scores[0].score).toBe(0.75);
   });
+});
+
+it("retains all 5000 tracks in a large semantic run", () => {
+  const base = semanticRun("large");
+  const ids = Array.from({ length: 5000 }, (_, i) => `track-${i}`);
+  const large = { ...base, trackIds: ids, trackSnapshots: ids.map((trackId) => ({ ...base.trackSnapshots[0], trackId })), results: ids.map((trackId) => ({ ...base.results[0], trackId })) };
+  const state = normalizeWorkspaceState({ ...EMPTY_WORKSPACE_STATE, semanticRuns: [large] });
+  expect(state.semanticRuns[0].trackIds).toHaveLength(5000);
+  expect(state.semanticRuns[0].results).toHaveLength(5000);
+});
+it("reports browser storage exhaustion without claiming the run was saved", async () => {
+  await expect(saveWorkspaceState({ nativeApp: false, state: EMPTY_WORKSPACE_STATE, storage: { getItem: () => null, setItem: () => { throw new Error("quota"); } } })).rejects.toThrow("Results remain available in this session");
 });

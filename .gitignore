@@ -25,3 +25,5 @@ src-tauri/target/
 
 .idea/
 .vscode/
+
+.flowset/

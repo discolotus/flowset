@@ -5,6 +5,7 @@ from playlist_optimizer import __version__
 from playlist_optimizer.api.router import router
 from playlist_optimizer.api.spotify_router import router as spotify_router
 from playlist_optimizer.config import get_settings
+from playlist_optimizer.library_jobs import router as jobs_router
 
 settings = get_settings()
 
@@ -21,6 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router)
+app.include_router(jobs_router)
 app.include_router(spotify_router)
 
 

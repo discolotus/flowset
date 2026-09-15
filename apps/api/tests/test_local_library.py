@@ -359,3 +359,21 @@ def test_resolves_only_supported_audio_files_inside_the_music_root(tmp_path: Pat
         resolve_local_audio_file(music_root, "../outside.mp3")
     with pytest.raises(ValueError, match="supported audio"):
         resolve_local_audio_file(music_root, "crate")
+
+
+def test_browser_lists_audio_and_scopes_root_identity(tmp_path: Path) -> None:
+    first = tmp_path / "one" / "Music"
+    second = tmp_path / "two" / "Music"
+    first.mkdir(parents=True)
+    second.mkdir(parents=True)
+    (first / "track.mp3").write_bytes(b"metadata is not read by browsing")
+    (first / "image.jpg").write_bytes(b"not audio")
+    (first / ".hidden.mp3").write_bytes(b"hidden")
+    (first / "outside.mp3").symlink_to(second / "song.mp3")
+    (first / "Album").mkdir()
+    browser = LocalLibraryBrowser(music_root=first)
+    listing = browser.browse()
+    assert [file.name for file in listing.audio_files] == ["track.mp3"]
+    assert listing.root_id == browser.browse("Album").root_id
+    assert listing.root_id != LocalLibraryBrowser(music_root=second).browse().root_id
+    assert str(tmp_path) not in listing.model_dump_json()

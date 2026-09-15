@@ -9,7 +9,7 @@ export const WORKSPACE_STATE_STORAGE_KEY = "sequence.workspace-state.v2";
 export const LEGACY_WORKSPACE_STATE_STORAGE_KEY = "sequence.workspace-state.v1";
 export const MAX_RECENT_LIBRARY_ROOTS = 6;
 export const MAX_SAVED_RECIPES = 30;
-export const MAX_PERSISTED_SEMANTIC_TRACKS = 200;
+export const MAX_PERSISTED_SEMANTIC_TRACKS = 5000;
 export const MAX_PERSISTED_SEMANTIC_PROMPTS = 20;
 
 export interface RecipeSettings {
@@ -389,6 +389,7 @@ export async function saveWorkspaceState({
   try {
     storage?.setItem(WORKSPACE_STATE_STORAGE_KEY, JSON.stringify(normalized));
   } catch {
+    if (!nativeApp) throw new Error("Browser history storage is full. Results remain available in this session, but this run was not saved. Export your playlist before closing.");
     // The native JSON file remains the primary desktop persistence surface.
   }
   if (!nativeApp) return null;

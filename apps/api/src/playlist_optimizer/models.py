@@ -294,11 +294,13 @@ class LocalLibraryRootRequest(BaseModel):
 
 
 class LocalLibraryBrowseResponse(BaseModel):
+    root_id: str = ""
     root_name: str
     current_path: str
     current_name: str
     parent_path: str | None = None
     folders: list[LocalLibraryFolder] = Field(default_factory=list)
+    audio_files: list[LocalLibraryFolder] = Field(default_factory=list)
 
 
 class BinSpec(BaseModel):

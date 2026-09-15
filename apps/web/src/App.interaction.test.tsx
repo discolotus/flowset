@@ -286,6 +286,7 @@ afterEach(() => {
 });
 
 async function openFixtureWorkspace(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: "Playlist Builder" }));
   await screen.findByRole("button", { name: /Demo playlists/ });
   await user.click(screen.getByRole("button", { name: /Demo playlists/ }));
   await screen.findByRole("heading", { name: /1 basis playlist/ }, { timeout: 2_000 });
@@ -383,6 +384,7 @@ describe("App behavior", () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await user.click(await screen.findByRole("button", { name: "Playlist Builder" }));
     const playlistFiles = await screen.findByRole("button", { name: "Playlist files" });
     expect(playlistFiles.getAttribute("aria-pressed")).toBe("false");
     await user.click(playlistFiles);
@@ -407,12 +409,17 @@ describe("App behavior", () => {
     expect(summary.textContent).toContain("1 input tracks");
     const analyze = screen.getByRole("button", { name: "Analyze selected tracks" });
     expect(analyze).toHaveProperty("disabled", false);
+    await user.click(screen.getByRole("button", { name: "Change folder" }));
+    expect(screen.getByLabelText("Combined source summary").textContent).toContain("1 sources");
+    expect(screen.getAllByRole("checkbox", { name: /Main Set/ })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: /Search.*Music/ })).toBeTruthy();
   });
 
   it("keeps Lab inference isolated until explicit recipe promotion", async () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await user.click(await screen.findByRole("button", { name: "Playlist Builder" }));
     await user.click(await screen.findByRole("button", { name: "Playlist files" }));
     await user.click(await screen.findByRole("button", { name: /Search.*Music/ }));
     await user.click(await screen.findByRole("button", { name: "Add playlist" }));
@@ -516,4 +523,70 @@ describe("App behavior", () => {
     await waitFor(() => expect(screen.queryByRole("combobox", { name: "Recipe history" })).toBeNull());
     expect(screen.getByText("No saved recipes yet.")).not.toBeNull();
   });
+  it("uses real Essentia arousal for listening presets when energy is absent", async () => {
+    const user = userEvent.setup();
+    const originalFetch = fetch;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await originalFetch(input, init);
+      if (!String(input).includes("/local-library/import")) return response;
+      const imported = await response.json();
+      imported.playlist.tracks = [{ ...localTrack,
+        audio_features: { arousal: 0.6, valence: 0.7, tempo: 125 },
+        audio_feature_provenance: { provider: "essentia" },
+      }];
+      imported.cached_track_count = 1;
+      return jsonResponse(imported);
+    }));
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Playlist Builder" }));
+    await user.click(await screen.findByRole("button", { name: "Playlist files" }));
+    await user.click(await screen.findByRole("button", { name: /Search.*Music/ }));
+    await user.click(await screen.findByRole("button", { name: "Add playlist" }));
+    await screen.findAllByRole("checkbox", { name: /Main Set/ });
+    await user.click(screen.getByRole("button", { name: /Build an energy journey/ }));
+    await user.click(screen.getByRole("button", { name: "Preview energy journey" }));
+    await waitFor(() => expect(previewRequests.at(-1)?.sort).toEqual({ parameter: "arousal", direction: "asc" }));
+    expect(previewRequests.at(-1)?.distribution_parameter).toBe("arousal");
+    expect(screen.getByText(/Uses Essentia arousal/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /Make mood crates/ }));
+    await user.click(screen.getByRole("button", { name: "Preview mood crates" }));
+    await waitFor(() => expect(previewRequests.at(-1)?.subgroup).toEqual({ parameter: "arousal", bin_count: 2 }));
+    expect(previewRequests.at(-1)?.split_factors).toEqual([{ parameter: "valence", bin_count: 3 }]);
+    expect(previewRequests.at(-1)?.sort).toEqual({ parameter: "tempo", direction: "asc" });
+  });
+
+  it("applies listening recipes through the existing preview pipeline without changing sources", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openFixtureWorkspace(user);
+    const sources = previewRequests.at(-1)?.input_playlists;
+    await user.click(screen.getByRole("button", { name: /Build an energy journey/ }));
+    await user.click(screen.getByRole("button", { name: "Preview energy journey" }));
+    await waitFor(() => expect(previewRequests.at(-1)?.sort).toEqual({ parameter: "energy", direction: "asc" }));
+    expect(previewRequests.at(-1)?.split_factors).toEqual([]);
+    expect(previewRequests.at(-1)?.subgroup).toBeNull();
+    expect(previewRequests.at(-1)?.input_playlists).toEqual(sources);
+    await user.click(screen.getByRole("button", { name: /Make mood crates/ }));
+    await user.click(screen.getByRole("button", { name: "Preview mood crates" }));
+    await waitFor(() => expect(previewRequests.at(-1)?.split_factors).toEqual([{ parameter: "valence", bin_count: 3 }]));
+    expect(previewRequests.at(-1)?.subgroup).toEqual({ parameter: "energy", bin_count: 2 });
+    expect(previewRequests.at(-1)?.sort).toEqual({ parameter: "tempo", direction: "asc" });
+    expect(previewRequests.at(-1)?.input_playlists).toEqual(sources);
+  });
+
+});
+
+it("incorporates another browser tab's saved recipes before the next local save", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await openFixtureWorkspace(user);
+  await user.click(screen.getByRole("button", { name: "Save current recipe" }));
+  const state = JSON.parse(storageValues.get(WORKSPACE_STATE_STORAGE_KEY)!);
+  state.savedRecipes = [{ ...state.savedRecipes[0], id: "other-tab-recipe", name: "Other tab recipe" }];
+  const serialized = JSON.stringify(state);
+  storageValues.set(WORKSPACE_STATE_STORAGE_KEY, serialized);
+  window.dispatchEvent(new StorageEvent("storage", { key: WORKSPACE_STATE_STORAGE_KEY, newValue: serialized }));
+  await waitFor(() => expect(screen.getByRole("combobox", { name: "Recipe history" }).textContent).toContain("Other tab recipe"));
+  await user.click(screen.getByRole("button", { name: "Save current recipe" }));
+  expect(JSON.parse(storageValues.get(WORKSPACE_STATE_STORAGE_KEY)!).savedRecipes.some((recipe: { id: string }) => recipe.id === "other-tab-recipe")).toBe(true);
 });

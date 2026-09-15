@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.0-preview.17] - 2026-09-14
+
+- Add the library-first Flowset workspace with expandable local folders, favorites, fuzzy search,
+  persistent playback, and a compact track inspector for real local music.
+- Add durable, resumable CLAP, MuQ-MuLan, MERT, and Essentia analysis jobs with bounded batches,
+  source/model freshness checks, inspectable results, and explicit playlist-preview handoff.
+- Keep source playlists read-only while allowing independent analysis results and measurements to
+  be combined by track membership before the existing preview/export flow.
+
 ## [0.2.0-preview.16] - 2026-08-26
 
 - Persist CLAP, MuQ-MuLan, and MERT embeddings in a content-addressed, model-bound SQLite index

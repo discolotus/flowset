@@ -15,6 +15,7 @@ from playlist_optimizer.analysis_progress import (
 )
 from playlist_optimizer.config import Settings, get_settings
 from playlist_optimizer.data.demo_playlist import DEMO_TRACKS
+from playlist_optimizer.inference_gate import inference_slot
 from playlist_optimizer.local_library import (
     AUDIO_MEDIA_TYPES,
     LocalLibraryBrowser,
@@ -112,7 +113,11 @@ def audio_feature_providers(
     return AudioFeatureProvidersResponse(providers=registry.infos())
 
 
-@router.post("/audio-features/resolve", response_model=AudioFeatureResolutionResponse)
+@router.post(
+    "/audio-features/resolve",
+    response_model=AudioFeatureResolutionResponse,
+    dependencies=[Depends(inference_slot)],
+)
 def resolve_audio_features(
     payload: AudioFeatureResolutionRequest,
     http_request: Request,
@@ -137,7 +142,9 @@ def semantic_backends(
     return registry.infos()
 
 
-@router.post("/semantic/rank", response_model=SemanticRankResponse)
+@router.post(
+    "/semantic/rank", response_model=SemanticRankResponse, dependencies=[Depends(inference_slot)]
+)
 def rank_semantic_audio(
     payload: SemanticRankRequest,
     http_request: Request,
@@ -258,7 +265,11 @@ def rank_semantic_audio(
     )
 
 
-@router.post("/semantic/reference-rank", response_model=SemanticRankResponse)
+@router.post(
+    "/semantic/reference-rank",
+    response_model=SemanticRankResponse,
+    dependencies=[Depends(inference_slot)],
+)
 def rank_semantic_reference(
     payload: SemanticReferenceRankRequest,
     http_request: Request,
@@ -347,7 +358,11 @@ def rank_semantic_reference(
     )
 
 
-@router.post("/semantic/embeddings", response_model=SemanticEmbeddingResponse)
+@router.post(
+    "/semantic/embeddings",
+    response_model=SemanticEmbeddingResponse,
+    dependencies=[Depends(inference_slot)],
+)
 def extract_semantic_embeddings(
     payload: SemanticEmbeddingRequest,
     http_request: Request,
@@ -472,7 +487,11 @@ def extract_semantic_embeddings(
     )
 
 
-@router.post("/semantic/neighbors", response_model=SemanticNeighborResponse)
+@router.post(
+    "/semantic/neighbors",
+    response_model=SemanticNeighborResponse,
+    dependencies=[Depends(inference_slot)],
+)
 def search_semantic_neighbors(
     payload: SemanticNeighborRequest,
     http_request: Request,

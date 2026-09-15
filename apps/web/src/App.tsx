@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { DistributionChart, DistributionLegend } from "./components/DistributionChart";
 import {
@@ -20,11 +20,13 @@ import {
 import { LocalDataSummary } from "./components/LocalDataSummary";
 import { OutputPlaylistCard } from "./components/OutputPlaylistCard";
 import { ParameterGuide } from "./components/ParameterGuide";
+import { MusicDiscovery, type ListeningPreset } from "./components/MusicDiscovery";
 import { RecipeLibrary } from "./components/RecipeLibrary";
 import { RowDensityToggle } from "./components/RowDensityToggle";
 import { SplitFactorGrid } from "./components/SplitFactorGrid";
 import { SourcePlaylistPicker } from "./components/SourcePlaylistPicker";
 import { ExportDialog } from "./components/ExportDialog";
+import { LibraryDesk } from "./components/library/LibraryDesk";
 import { SemanticLab } from "./pages/SemanticLab";
 import { fingerprintTrackIds } from "./lib/semantic/runs";
 import {
@@ -97,6 +99,7 @@ import {
 import { readRowDensity, saveRowDensity, type RowDensity } from "./lib/rowDensity";
 import { LatestRequestGuard } from "./lib/latestRequest";
 import {
+  WORKSPACE_STATE_STORAGE_KEY,
   forgetRecipe,
   loadWorkspaceState,
   normalizeWorkspaceState,
@@ -125,6 +128,8 @@ import type {
   Track,
 } from "./lib/types";
 import type { SemanticExperimentRunV1, SemanticPromotion } from "./lib/semantic/types";
+
+const Learning = lazy(() => import("./pages/Learning").then((module) => ({ default: module.Learning })));
 
 export function mergeSemanticScores(existing: SemanticScore[] = [], incoming: SemanticScore[] = []): SemanticScore[] {
   const merged = new Map(existing.map((score) => [score.key, score]));
@@ -349,7 +354,7 @@ export default function App() {
     }
   })();
   const [sourceMode, setSourceMode] = useState<"local" | "demo">("local");
-  const [workspaceMode, setWorkspaceMode] = useState<"builder" | "semantic-lab">("builder");
+  const [workspaceMode, setWorkspaceMode] = useState<"library" | "builder" | "semantic-lab" | "learning">("library");
   const [semanticRuns, setSemanticRuns] = useState<readonly SemanticExperimentRunV1[]>(() =>
     readBrowserWorkspaceState(localStorage).semanticRuns,
   );
@@ -419,6 +424,8 @@ export default function App() {
   const [workspaceStatePath, setWorkspaceStatePath] = useState<string | null>(null);
   const [selectedSavedRecipeId, setSelectedSavedRecipeId] = useState("");
   const [persistenceStatus, setPersistenceStatus] = useState<string | null>(null);
+  const libraryRootRevision = useRef(0);
+  const folderBrowseRequests = useRef(new LatestRequestGuard());
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -441,6 +448,23 @@ export default function App() {
       stale = true;
     };
   }, [nativeApp, localStorage]);
+
+  useEffect(() => {
+    if (nativeApp) return;
+    const syncBrowserWorkspace = (event: StorageEvent) => {
+      if (event.key !== WORKSPACE_STATE_STORAGE_KEY) return;
+      try {
+        const next = normalizeWorkspaceState(event.newValue ? JSON.parse(event.newValue) : null);
+        workspaceStateRef.current = next;
+        setWorkspaceState(next);
+        setSemanticRuns(next.semanticRuns);
+      } catch {
+        // Ignore malformed writes from another tab; keep the last valid workspace.
+      }
+    };
+    window.addEventListener("storage", syncBrowserWorkspace);
+    return () => window.removeEventListener("storage", syncBrowserWorkspace);
+  }, [nativeApp]);
 
   const persistWorkspace = (next: WorkspaceState, message?: string) => {
     workspaceStateRef.current = next;
@@ -496,16 +520,18 @@ export default function App() {
   }, []);
 
   const browseFolders = (path: string) => {
+    const request = folderBrowseRequests.current.begin();
     setBrowsingFolders(true);
     setLibraryError(null);
     browseLocalLibrary(path)
-      .then(setFolderBrowser)
+      .then((listing) => { if (request.isCurrent()) setFolderBrowser(listing); })
       .catch((reason: unknown) => {
+        if (!request.isCurrent()) return;
         setLibraryError(
           reason instanceof Error ? reason.message : "Could not browse the local music library.",
         );
       })
-      .finally(() => setBrowsingFolders(false));
+      .finally(() => { if (request.isCurrent()) setBrowsingFolders(false); });
   };
 
   const searchPlaylistFiles = async (path: string) => {
@@ -557,6 +583,37 @@ export default function App() {
     uniqueTracks.flatMap((track) => localAudioPaths[track.id] ? [[track.id, localAudioPaths[track.id]]] : []),
   ), [localAudioPaths, uniqueTracks]);
 
+  const applyDiscoveryRanking = (ranking: import("./lib/types").SemanticRankResponse, name: string) => {
+    const byTrack = new Map(ranking.results.map((item) => [item.track_id, item.scores]));
+    setLocalPlaylists((current) => current.map((playlist) => ({
+      ...playlist,
+      tracks: playlist.tracks.map((track) => byTrack.has(track.id)
+        ? { ...track, semantic_scores: mergeSemanticScores(track.semantic_scores, byTrack.get(track.id) ?? []) }
+        : track),
+    })));
+    setRecipeName(name);
+    setSplitEnabled(false);
+    setSubgroupEnabled(false);
+    setSortEnabled(true);
+    setSortParameter("energy");
+    setSortDirection("descending");
+    setDistributionParameter("energy");
+    setSemanticScoreKeys({ distribution: ranking.score_key, split: null, subgroup: null, sort: ranking.score_key });
+  };
+  const applyListeningPreset = (preset: ListeningPreset) => {
+    setSemanticScoreKeys({ distribution: null, split: null, subgroup: null, sort: null });
+    setRecipeName(preset === "journey" ? "Energy journey" : "Mood crates");
+    setDistributionParameter(preset === "journey" ? journeyParameter : "valence");
+    setSplitEnabled(preset === "crates");
+    setSplitFactors([{ id: "factor-1", parameter: "valence", binCount: 3 }]);
+    setSubgroupEnabled(preset === "crates");
+    setSubgroupParameter(journeyParameter);
+    setSubgroupBinCount(2);
+    setSortEnabled(true);
+    setSortParameter(preset === "journey" ? journeyParameter : "tempo");
+    setSortDirection("ascending");
+  };
+
   const promoteSemanticRun = (
     promotion: SemanticPromotion,
     scoresByTrack: ReadonlyMap<string, Track["semantic_scores"]>,
@@ -586,6 +643,8 @@ export default function App() {
     ),
     [uniqueTracks],
   );
+  const journeyParameter = (numericParameterCoverage.get("arousal")?.available ?? 0)
+    > (numericParameterCoverage.get("energy")?.available ?? 0) ? "arousal" : "energy";
   const sortParameterCoverage = useMemo(
     () => new Map<SortParameter, ParameterCoverage>(
       SORT_PARAMETERS.map(({ value }) => [value, parameterCoverage(uniqueTracks, value)]),
@@ -754,7 +813,7 @@ export default function App() {
       ? `group each into ${subgroupBinCount} ${parameterLabel(subgroupParameter).toLowerCase()} sections`
       : null,
     sortEnabled
-      ? `sort ${subgroupEnabled ? "inside each section" : "the playlist"} by ${parameterLabel(sortParameter).toLowerCase()} ${sortDirectionLabels[sortDirection === "ascending" ? 0 : 1].toLowerCase()}`
+      ? `sort ${subgroupEnabled ? "inside each section" : "the playlist"} by ${semanticScoreKeys.sort ? "similarity score" : parameterLabel(sortParameter).toLowerCase()} ${sortDirectionLabels[sortDirection === "ascending" ? 0 : 1].toLowerCase()}`
       : null,
   ].filter(Boolean).join(" → ");
   const outputTrackCount = preview?.outputs.reduce(
@@ -1079,6 +1138,15 @@ export default function App() {
 
   const activateNativeLibrary = async (path: string) => {
     const listing = await selectLocalLibraryRoot(path);
+    libraryRootRevision.current += 1;
+    folderBrowseRequests.current.invalidate();
+    setLocalPlaylists([]);
+    setSelectedIds(new Set());
+    setImportedPaths(new Set());
+    setImportingPaths(new Set());
+    setLocalAudioPaths({});
+    setAnalysisCacheDirectories({});
+    setAnalysisStatus(null);
     setLibraryRootPath(path);
     setFolderBrowser(listing);
     setLibrary(listing);
@@ -1171,17 +1239,11 @@ export default function App() {
     setDiscoveringPlaylistFiles(false);
     setLibrary(null);
     setPlaylistDiscovery(null);
-    setLibraryRootPath(null);
-    setLocalPlaylists([]);
-    setSelectedIds(new Set());
-    setImportedPaths(new Set());
-    setImportingPaths(new Set());
-    setLocalAudioPaths({});
-    setAnalysisCacheDirectories({});
-    setAnalysisStatus(null);
+
   };
 
   const importLocalSource = (source: LocalLibraryFolder | LocalPlaylistFile) => {
+    const rootRevision = libraryRootRevision.current;
     setImportingPaths((current) => new Set(current).add(source.path));
     setLibraryError(null);
     importLocalPlaylist({
@@ -1189,6 +1251,7 @@ export default function App() {
       recursive: !("source_kind" in source),
     })
       .then((result) => {
+        if (rootRevision !== libraryRootRevision.current) return;
         const sourceLabel = result.source_kind === "directory"
           ? "Local folder"
           : `${result.source_kind.toUpperCase()} playlist file`;
@@ -1228,11 +1291,13 @@ export default function App() {
         if (result.warnings.length > 0) setLibraryError(result.warnings.join(" "));
       })
       .catch((reason: unknown) => {
+        if (rootRevision !== libraryRootRevision.current) return;
         setLibraryError(
           reason instanceof Error ? reason.message : `Could not import ${source.name}.`,
         );
       })
       .finally(() => {
+        if (rootRevision !== libraryRootRevision.current) return;
         setImportingPaths((current) => {
           const next = new Set(current);
           next.delete(source.path);
@@ -1430,20 +1495,22 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-ink text-white selection:bg-acid selection:text-ink">
-      <a href="#workspace" className="skip-link">Skip to workspace</a>
+      <a href={workspaceMode === "library" ? "#library-workspace" : "#workspace"} className="skip-link">Skip to workspace</a>
       <header className="sticky top-0 z-30 border-b border-line/80 bg-ink/90 backdrop-blur-xl">
         <nav className="mx-auto flex max-w-[1480px] items-center justify-between px-5 py-4 lg:px-8" aria-label="Primary navigation">
           <div className="flex items-center gap-3">
             <img className="brand-mark" src="/flowset-icon.png" alt="" />
             <div>
               <p className="font-display text-sm font-semibold tracking-tight">Flowset</p>
-              <p className="text-[9px] uppercase tracking-[0.2em] text-mist/45">Playlist laboratory</p>
+              <p className="text-[9px] uppercase tracking-[0.2em] text-mist/70">Library desk</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
             <div role="group" aria-label="Workspace" className="source-mode-tabs">
+              <button type="button" className={workspaceMode === "library" ? "active" : ""} aria-pressed={workspaceMode === "library"} onClick={() => setWorkspaceMode("library")}>Library</button>
               <button type="button" className={workspaceMode === "builder" ? "active" : ""} aria-pressed={workspaceMode === "builder"} onClick={() => setWorkspaceMode("builder")}>Playlist Builder</button>
               <button type="button" className={workspaceMode === "semantic-lab" ? "active" : ""} aria-pressed={workspaceMode === "semantic-lab"} onClick={() => setWorkspaceMode("semantic-lab")}>Semantic Lab</button>
+              <button type="button" className={workspaceMode === "learning" ? "active" : ""} aria-pressed={workspaceMode === "learning"} onClick={() => setWorkspaceMode("learning")}>Learn</button>
             </div>
             <span className="hidden text-[10px] uppercase tracking-[0.16em] text-acid/65 sm:block">
               {sourceMode === "local" ? "Local library workspace" : "Fixture workspace"}
@@ -1452,8 +1519,23 @@ export default function App() {
         </nav>
       </header>
 
-      <main id="workspace" className="mx-auto max-w-[1480px] px-5 pb-16 pt-9 lg:px-8 lg:pt-12">
-        {workspaceMode === "semantic-lab" ? (
+      <LibraryDesk visible={workspaceMode === "library"} onTools={() => setWorkspaceMode("semantic-lab")} onDraft={(tracks, paths, name) => {
+        const playlist = { id: `library-draft-${Date.now()}`, name, tracks, description: "Library selection · draft" };
+        setSourceMode("local");
+        setLocalPlaylists(current => [...current, playlist]);
+        setSelectedIds(new Set([playlist.id]));
+        setLocalAudioPaths(current => ({ ...current, ...paths }));
+        setRecipeName(name);
+        setSplitEnabled(false); setSubgroupEnabled(false); setSortEnabled(false);
+        setSemanticScoreKeys({ distribution: null, split: null, subgroup: null, sort: null });
+        setWorkspaceMode("builder");
+      }} />
+      <main id="workspace" hidden={workspaceMode === "library"} className="mx-auto max-w-[1480px] px-5 pb-16 pt-9 lg:px-8 lg:pt-12">
+        {workspaceMode === "learning" ? (
+          <Suspense fallback={<p role="status">Opening the learning studio…</p>}>
+            <Learning tracks={uniqueTracks} audioPaths={selectedAudioPaths} onOpenBuilder={() => setWorkspaceMode("builder")} onOpenLab={() => setWorkspaceMode("semantic-lab")} />
+          </Suspense>
+        ) : workspaceMode === "semantic-lab" ? (
           <SemanticLab
             tracks={uniqueTracks}
             audioPaths={selectedAudioPaths}
@@ -1463,16 +1545,27 @@ export default function App() {
           />
         ) : <>
         <section className="max-w-4xl">
-          <p className="eyebrow">Organization recipe 01</p>
+          <p className="eyebrow">Your library, rediscovered</p>
           <h1 className="mt-3 max-w-3xl text-balance font-display text-4xl font-semibold leading-[1.02] tracking-[-0.045em] text-white sm:text-5xl lg:text-6xl">
-            Turn a crate into a set of usable playlists.
+            Find the music for your next moment.
           </h1>
           <p className="mt-5 max-w-2xl text-pretty text-sm leading-6 text-mist/65 sm:text-base sm:leading-7">
-            Combine one or more sources, inspect the shape of the music, split it into basis playlists,
-            then group and sort tracks without crossing the boundaries you created.
+            Start with a feeling, a favorite song, or an energy journey. Listen to the matches,
+            shape your playlists, and export when they feel right.
           </p>
         </section>
 
+        <MusicDiscovery
+          tracks={uniqueTracks}
+          audioPaths={selectedAudioPaths}
+          fixture={sourceMode === "demo"}
+          journeyParameter={journeyParameter}
+          canJourney={(numericParameterCoverage.get(journeyParameter)?.available ?? 0) > 0}
+          canCrates={["valence", journeyParameter, "tempo"].every((parameter) => (numericParameterCoverage.get(parameter as NumericParameter)?.available ?? 0) > 0)}
+          onApplyRanking={applyDiscoveryRanking}
+          onPreset={applyListeningPreset}
+          onAdvanced={() => setWorkspaceMode("semantic-lab")}
+        />
         <section className="mt-10 border-y border-line py-6" aria-labelledby="sources-heading">
           <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
             <div>
@@ -1584,7 +1677,7 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <div className="feature-provider-panel">
+            <details className="analysis-disclosure"><summary>Analysis &amp; advanced controls</summary><div className="feature-provider-panel">
               <div className="max-w-xl">
                 <p className="eyebrow">Audio feature backend</p>
                 <h3 className="mt-1 font-display text-lg font-semibold">
@@ -1634,7 +1727,7 @@ export default function App() {
                 />
                 {Object.values(semanticScoreKeys).some(Boolean) && <p className="mt-2 text-[10px] text-acid/70">Semantic scores apply only to the explicitly selected recipe scopes.</p>}
               </div>
-            </div>
+            </div></details>
           )}
           {sourceMode === "local" && analysisProgress && (
             <div className="mt-5">
@@ -1726,7 +1819,8 @@ export default function App() {
                 enabled={sortEnabled}
                 onToggle={() => setSortEnabled((value) => !value)}
               >
-                <SelectField label="Parameter" value={sortParameter} onChange={(value) => setSortParameter(value as SortParameter)}>
+                {semanticScoreKeys.sort && <p className="col-span-2 text-xs text-acid">Ordering by the applied similarity score. Clear recipe assignments in advanced controls to return to measurements.</p>}
+                <SelectField label={semanticScoreKeys.sort ? "Fallback parameter" : "Parameter"} value={sortParameter} onChange={(value) => setSortParameter(value as SortParameter)}>
                   <SortParameterOptions coverage={sortParameterCoverage} />
                 </SelectField>
                 <SelectField label="Direction" value={sortDirection} onChange={(value) => setSortDirection(value as SortDirection)}>
@@ -1913,7 +2007,7 @@ export default function App() {
         />
       </ExportDialog>
 
-      <footer className="mx-auto flex max-w-[1480px] flex-col justify-between gap-3 border-t border-line px-5 py-7 text-[11px] text-mist/45 sm:flex-row lg:px-8">
+      <footer style={workspaceMode === "library" ? {display:"none"} : undefined} className="mx-auto flex max-w-[1480px] flex-col justify-between gap-3 border-t border-line px-5 py-7 text-[11px] text-mist/45 sm:flex-row lg:px-8">
         <span>Flowset · V0.2 organization pipeline</span>
         <span>
           Source playlists remain read-only · {sourceMode === "demo"

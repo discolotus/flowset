@@ -122,7 +122,12 @@ def test_local_library_folder_endpoint_lists_subfolders(tmp_path: Path) -> None:
         app.dependency_overrides.pop(get_settings, None)
 
     assert response.status_code == 200
-    assert response.json() == {
+    body = response.json()
+    assert len(body["root_id"]) == 24
+    assert str(music_root) not in body["root_id"]
+    assert body == {
+        "root_id": body["root_id"],
+        "audio_files": [],
         "root_name": "Music",
         "current_path": "Sets",
         "current_name": "Sets",
